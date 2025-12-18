@@ -2,47 +2,45 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Voice Master Pro - Referencia Real</title>
+    <title>Voice Master - Fix Visual</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/addons/p5.sound.min.js"></script>
     <script src="https://unpkg.com/ml5@0.12.2/dist/ml5.min.js"></script>
     <style>
         body { margin: 0; background: #050508; color: #00f2ff; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
-        #setup-panel { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(20,20,40,0.95); padding: 40px; border: 2px solid #00f2ff; border-radius: 20px; text-align: center; z-index: 100; backdrop-filter: blur(10px); width: 320px; }
-        #footer-controls { position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(0,0,0,0.95); border-top: 1px solid #333; padding: 10px 0 25px 0; z-index: 10; }
-        #progress-container { width: 90%; height: 12px; background: #222; margin: 10px auto; border-radius: 6px; cursor: pointer; border: 1px solid #444; overflow: hidden; }
-        #progress-bar { width: 0%; height: 100%; background: #00f2ff; pointer-events: none; }
-        #controls-row { display: flex; justify-content: center; align-items: center; gap: 15px; }
-        .btn-ctrl { background: transparent; border: 1px solid #00f2ff; color: #00f2ff; padding: 8px 18px; cursor: pointer; border-radius: 20px; font-weight: bold; font-size: 11px; text-transform: uppercase; }
+        #setup-panel { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(20,20,40,0.95); padding: 40px; border: 2px solid #00f2ff; border-radius: 20px; text-align: center; z-index: 100; width: 320px; }
+        #footer-controls { position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(0,0,0,0.9); padding: 15px 0 25px 0; z-index: 10; border-top: 1px solid #333; }
+        #progress-container { width: 90%; height: 10px; background: #222; margin: 0 auto 10px; border-radius: 5px; cursor: pointer; overflow: hidden; }
+        #progress-bar { width: 0%; height: 100%; background: #00f2ff; }
+        #controls-row { display: flex; justify-content: center; gap: 15px; align-items: center; }
+        .btn-ctrl { background: transparent; border: 1px solid #00f2ff; color: #00f2ff; padding: 8px 15px; cursor: pointer; border-radius: 20px; font-size: 11px; font-weight: bold; }
         .btn-ctrl:hover { background: #00f2ff; color: #000; }
-        #hud { position: absolute; top: 20px; right: 20px; text-align: right; pointer-events: none; }
-        .hidden { display: none !important; }
+        #hud { position: absolute; top: 20px; right: 20px; text-align: right; }
     </style>
 </head>
 <body>
 
     <div id="setup-panel">
-        <h1 style="margin:0">VOICE MASTER</h1>
-        <p>Notas Reales con Guía</p>
+        <h1>VOICE MASTER</h1>
         <input type="file" id="audioFile" accept="audio/*"><br><br>
-        <button class="btn-ctrl" onclick="iniciarTodo()" style="background:#00f2ff; color:black">EMPEZAR</button>
+        <button class="btn-ctrl" onclick="iniciarTodo()" style="background:#00f2ff; color:black">CARGAR</button>
     </div>
 
-    <div id="footer-controls" class="hidden">
+    <div id="footer-controls" class="hidden" style="display:none">
         <div id="progress-container" onclick="manejarClickBarra(event)"><div id="progress-bar"></div></div>
         <div id="controls-row">
-            <button class="btn-ctrl" onclick="cambiarCancion()">Nueva</button>
+            <button class="btn-ctrl" onclick="location.reload()">NUEVA</button>
             <button class="btn-ctrl" onclick="saltar(-10)">-10s</button>
             <button class="btn-ctrl" id="playPauseBtn" onclick="togglePlay()">PAUSA</button>
-            <button class="btn-ctrl" onclick="detenerSistema()">STOP</button>
+            <button class="btn-ctrl" onclick="song.stop()">STOP</button>
             <button class="btn-ctrl" onclick="saltar(10)">+10s</button>
-            <div id="time-info" style="color:#888; font-family:monospace; width: 110px; font-size: 11px;">00:00 / 00:00</div>
+            <div id="time-info" style="font-family:monospace; font-size:12px; color:#888; width:100px">00:00</div>
         </div>
     </div>
 
-    <div id="hud" class="hidden">
-        <div style="font-size: 60px; font-weight: bold; color: #ff00ff;" id="noteName">--</div>
-        <div id="scoreDisplay" style="font-size: 18px; color: #00f2ff;">PUNTOS: 0</div>
+    <div id="hud" style="display:none">
+        <div id="noteName" style="font-size: 60px; font-weight: bold; color: #ff00ff;">--</div>
+        <div id="scoreDisplay" style="font-size: 18px;">PUNTOS: 0</div>
     </div>
 
     <script>
@@ -50,20 +48,45 @@
         let isReady = false;
         let freqUser = 0;
         let score = 0;
-        let bars = []; 
+        let bars = [];
+        let pg; // Capa para la parrilla
         const noteList = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
         function setup() {
             createCanvas(windowWidth, windowHeight);
+            // Creamos una capa gráfica secundaria para la parrilla
+            pg = createGraphics(windowWidth, windowHeight);
+            prepararParrilla();
+        }
+
+        function prepararParrilla() {
+            pg.background(5, 5, 15);
+            pg.textAlign(LEFT, CENTER);
+            pg.textSize(12);
+            for (let i = 36; i < 84; i++) {
+                let f = 440 * Math.pow(2, (i - 69) / 12);
+                let y = freqToY(f);
+                if (y > 0 && y < height) {
+                    pg.stroke(255, 15);
+                    pg.line(80, y, width, y);
+                    pg.noStroke();
+                    let n = noteList[i % 12];
+                    let oct = Math.floor(i / 12) - 1;
+                    pg.fill(n.length === 1 ? [0, 242, 255, 200] : [255, 255, 255, 40]);
+                    pg.text(n + oct, 25, y);
+                }
+            }
+            pg.stroke(0, 242, 255, 50);
+            pg.line(80, 0, 80, height);
         }
 
         async function iniciarTodo() {
             const fileInput = document.getElementById('audioFile');
             if (!fileInput.files[0]) return;
-
-            document.getElementById('setup-panel').classList.add('hidden');
-            document.getElementById('footer-controls').classList.remove('hidden');
-            document.getElementById('hud').classList.remove('hidden');
+            
+            document.getElementById('setup-panel').style.display = 'none';
+            document.getElementById('footer-controls').style.display = 'block';
+            document.getElementById('hud').style.display = 'block';
 
             audioCtx = getAudioContext();
             await audioCtx.resume();
@@ -89,33 +112,32 @@
             if (song.isPlaying()) {
                 pitchSong.getPitch((err, f) => {
                     if (f && f > 60) {
-                        if (bars.length === 0 || song.currentTime() - bars[bars.length-1].time > 0.12) {
+                        if (bars.length === 0 || song.currentTime() - bars[bars.length-1].time > 0.1) {
                             bars.push({ y: freqToY(f), time: song.currentTime(), hit: false });
                         }
                     }
                 });
             }
             pitchUser.getPitch((err, fU) => { freqUser = fU || 0; });
-            if (bars.length > 600) bars.shift();
+            if (bars.length > 500) bars.shift();
             requestAnimationFrame(loopIA);
         }
 
         function draw() {
-            background(5, 5, 15);
-            if (!isReady) return;
+            // 1. Dibujar la parrilla desde la capa secundaria (Súper rápido)
+            image(pg, 0, 0);
 
-            // 1. DIBUJAR PARRILLA (Líneas y Nombres de Notas)
-            drawReferenceGrid();
+            if (!isReady) return;
 
             let now = song.currentTime();
             
-            // 2. DIBUJAR NOTAS DE LA CANCIÓN (Magenta)
+            // 2. Dibujar ONDAS MAGENTA
             for (let i = bars.length - 1; i >= 0; i--) {
                 let b = bars[i];
-                let x = width/2 + (b.time - now) * 450; 
+                let x = width/2 + (b.time - now) * 400;
 
                 if (x > 80 && x < width + 100) {
-                    strokeWeight(14);
+                    strokeWeight(12);
                     stroke(b.hit ? "#00ff96" : "rgba(255, 0, 255, 0.8)");
                     line(x, b.y, x + 40, b.y);
 
@@ -127,67 +149,33 @@
                 }
             }
 
-            // 3. TU VOZ (Cian)
+            // 3. Dibujar VOZ CIAN
             if (freqUser > 0) {
                 let y = freqToY(freqUser);
                 fill(0, 242, 255); noStroke(); ellipse(width/2, y, 30, 30);
                 let midi = Math.round(12 * (Math.log(freqUser/440)/Math.log(2)) + 69);
-                document.getElementById('noteName').innerText = noteList[midi % 12] || "--";
+                document.getElementById('noteName').innerText = noteList[midi % 12];
             }
             
             updateUI();
         }
 
-        function drawReferenceGrid() {
-            // Dibujar área de nombres de notas a la izquierda
-            fill(10, 10, 25); noStroke();
-            rect(0, 0, 80, height);
-            
-            textAlign(CENTER, CENTER); textSize(11);
-            for (let i = 36; i < 84; i++) { // Rango de notas común
-                let f = 440 * Math.pow(2, (i - 69) / 12);
-                let y = freqToY(f);
-                
-                if (y > 0 && y < height - 100) {
-                    // Línea horizontal de referencia
-                    stroke(255, 15); strokeWeight(1);
-                    line(80, y, width, y);
-                    
-                    // Nombre de la nota
-                    let n = noteList[i % 12];
-                    let oct = Math.floor(i/12) - 1;
-                    if (n.length === 1) { // Notas naturales resaltadas
-                        fill(0, 242, 255, 200);
-                        text(n + oct, 40, y);
-                    } else { // Sostenidos más tenues
-                        fill(255, 50);
-                        text(n + oct, 40, y);
-                    }
-                }
-            }
-            // Línea divisoria vertical
-            stroke(0, 242, 255, 50); line(80, 0, 80, height);
-        }
-
         function updateUI() {
-            let cur = song.currentTime(); let dur = song.duration();
+            let cur = song.currentTime();
+            let dur = song.duration();
             document.getElementById('progress-bar').style.width = (cur/dur*100) + "%";
             document.getElementById('time-info').innerText = floor(cur) + "s / " + floor(dur) + "s";
             document.getElementById('scoreDisplay').innerText = "PUNTOS: " + score;
         }
 
         function freqToY(f) { 
-            // Escala logarítmica para que las notas se vean equidistantes
-            return f <= 60 ? -100 : map(log(f), log(60), log(1000), height - 160, 40); 
+            return map(log(f), log(60), log(1000), height - 160, 40); 
         }
 
-        // --- Funciones de Control ---
         function togglePlay() { 
             if(song.isPlaying()) { song.pause(); document.getElementById('playPauseBtn').innerText = "PLAY"; } 
             else { song.play(); document.getElementById('playPauseBtn').innerText = "PAUSA"; }
         }
-        function detenerSistema() { song.stop(); bars = []; score = 0; }
-        function cambiarCancion() { location.reload(); }
         function saltar(s) { song.jump(constrain(song.currentTime()+s, 0, song.duration())); }
         function manejarClickBarra(e) {
             let rect = document.getElementById('progress-container').getBoundingClientRect();
