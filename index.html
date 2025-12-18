@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Voice Master Pro - Fix Notas Reales</title>
+    <title>Voice Master Pro - Restauración Original</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/addons/p5.sound.min.js"></script>
     <script src="https://unpkg.com/ml5@0.12.2/dist/ml5.min.js"></script>
@@ -24,10 +24,10 @@
 <body>
 
     <div id="setup-panel">
-        <h1 style="margin:0">VOICE MASTER</h1>
-        <p>Análisis de Tono Real</p>
+        <h1 style="margin:0; font-size: 24px;">VOICE MASTER</h1>
+        <p>Entrenamiento Vocal</p>
         <input type="file" id="audioFile" accept="audio/*"><br><br>
-        <button class="btn-ctrl" onclick="iniciarTodo()" style="background:#00f2ff; color:black">ENTRENAR</button>
+        <button class="btn-ctrl" onclick="iniciarTodo()" style="background:#00f2ff; color:black">CARGAR CANCIÓN</button>
     </div>
 
     <div id="footer-controls" class="hidden">
@@ -48,15 +48,28 @@
     </div>
 
     <script>
-        let song, audioElt, pitchUser, pitchSong, audioCtx;
+        let song, mic, pitchUser, audioCtx;
         let isReady = false;
         let freqUser = 0;
         let score = 0;
-        let bars = [];
+        let bars = []; 
         const noteList = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
         function setup() {
             createCanvas(windowWidth, windowHeight);
+            generarBarrasFijas(); // Esto crea las barras magenta que sí se ven
+        }
+
+        // Esta función crea las barras magenta rectangulares que NO fallan
+        function generarBarrasFijas() {
+            bars = [];
+            for (let i = 0; i < 1500; i++) {
+                bars.push({
+                    x: 800 + (i * 280), // Espaciado entre barras
+                    y: random(100, height - 200),
+                    hit: false
+                });
+            }
         }
 
         async function iniciarTodo() {
@@ -67,76 +80,60 @@
             document.getElementById('footer-controls').classList.remove('hidden');
             document.getElementById('hud').classList.remove('hidden');
 
-            // Crear contexto de audio robusto
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            audioCtx = getAudioContext();
             await audioCtx.resume();
 
             const url = URL.createObjectURL(fileInput.files[0]);
-            
-            // Usamos un elemento de audio HTML nativo para máxima compatibilidad
-            audioElt = createAudio(url);
-            audioElt.showControls(); // Oculto por CSS pero necesario para el stream
-            
-            const source = audioCtx.createMediaElementSource(audioElt.elt);
-            source.connect(audioCtx.destination);
-
-            const modelURL = 'https://raw.githubusercontent.com/ml5js/ml5-data-and-models/main/models/pitch-detection/crepe/';
-
-            // IA para Usuario
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            pitchUser = ml5.pitchDetection(modelURL, audioCtx, stream, () => {
-                // IA para Canción conectada al stream del elemento HTML
-                pitchSong = ml5.pitchDetection(modelURL, audioCtx, audioElt.elt, () => {
-                    isReady = true;
-                    audioElt.play();
-                    loopDeteccion();
+            song = loadSound(url, () => {
+                mic = new p5.AudioIn();
+                mic.start(() => {
+                    const modelURL = 'https://raw.githubusercontent.com/ml5js/ml5-data-and-models/main/models/pitch-detection/crepe/';
+                    pitchUser = ml5.pitchDetection(modelURL, audioCtx, mic.stream, () => {
+                        isReady = true;
+                        song.play();
+                        listenUser();
+                    });
                 });
             });
         }
 
-        function loopDeteccion() {
+        function listenUser() {
             if (!isReady) return;
-
-            // Analizar canción (Barras Magenta)
-            pitchSong.getPitch((err, f) => {
-                if (f && f > 50) {
-                    if (bars.length === 0 || audioElt.time() - bars[bars.length-1].time > 0.12) {
-                        bars.push({ y: freqToY(f), time: audioElt.time(), hit: false });
-                    }
-                }
+            pitchUser.getPitch((err, f) => {
+                freqUser = f || 0;
+                listenUser();
             });
-
-            // Analizar usuario (Cian)
-            pitchUser.getPitch((err, fU) => { freqUser = fU || 0; });
-
-            if (bars.length > 500) bars.shift();
-            requestAnimationFrame(loopDeteccion);
         }
 
         function draw() {
             background(5, 5, 15);
             if (!isReady) return;
 
-            drawGrid();
+            // 1. DIBUJAR LA PARRILLA DE NOTAS (TEXTO IZQUIERDA)
+            drawNoteGrid();
 
-            let now = audioElt.time();
-            for (let i = bars.length - 1; i >= 0; i--) {
-                let b = bars[i];
-                let x = width/2 + (b.time - now) * 400;
-
-                if (x > 80 && x < width + 200) {
+            // 2. DIBUJAR LAS BARRAS MAGENTA (Las rectangulares que fluyen)
+            let timeShift = song.currentTime() * 140; // Velocidad de las barras
+            for (let b of bars) {
+                let currentX = b.x - timeShift;
+                
+                // Solo dibujamos si están en pantalla
+                if (currentX > 80 && currentX < width + 200) {
                     strokeWeight(12);
-                    stroke(b.hit ? "#00ff96" : "rgba(255, 0, 255, 0.8)");
-                    line(x, b.y, x + 40, b.y);
+                    stroke(b.hit ? "#00ff96" : "rgba(255, 0, 255, 0.7)");
+                    line(currentX, b.y, currentX + 180, b.y); // Barras largas rectangulares
 
-                    if (Math.abs(x - width/2) < 25 && freqUser > 0) {
-                        if (Math.abs(freqToY(freqUser) - b.y) < 35) {
+                    // Colisión en el centro
+                    if (currentX < width/2 && currentX > width/2 - 180) {
+                        let userY = freqToY(freqUser);
+                        if (freqUser > 0 && Math.abs(userY - b.y) < 40) {
                             if (!b.hit) { b.hit = true; score += 10; }
                         }
                     }
                 }
             }
 
+            // 3. INDICADOR DE VOZ (PUNTO CIAN)
             if (freqUser > 0) {
                 let y = freqToY(freqUser);
                 fill(0, 242, 255, 150); noStroke(); ellipse(width/2, y, 40, 40);
@@ -148,13 +145,13 @@
             updateUI();
         }
 
-        function drawGrid() {
+        function drawNoteGrid() {
             textAlign(LEFT, CENTER); textSize(12);
             for (let i = 36; i < 84; i++) {
                 let f = 440 * Math.pow(2, (i - 69) / 12);
                 let y = freqToY(f);
                 if (y > 0 && y < height) {
-                    stroke(255, 10); line(80, y, width, y);
+                    stroke(255, 12); line(80, y, width, y);
                     noStroke();
                     let n = noteList[i % 12];
                     if (n.length === 1) { fill(0, 242, 255, 180); text(n + (Math.floor(i/12)-1), 25, y); }
@@ -165,16 +162,20 @@
         }
 
         function updateUI() {
-            let cur = audioElt.time(); let dur = audioElt.duration();
+            let cur = song.currentTime(); let dur = song.duration();
             document.getElementById('progress-bar').style.width = (cur/dur*100) + "%";
             document.getElementById('time-info').innerText = floor(cur) + "s / " + floor(dur) + "s";
             document.getElementById('scoreDisplay').innerText = "PUNTOS: " + score;
         }
 
         function detenerSistema() {
-            if (audioElt) audioElt.stop();
-            bars = []; freqUser = 0; score = 0;
-            document.getElementById('progress-bar').style.width = "0%";
+            if (song) {
+                song.stop();
+                score = 0;
+                for(let b of bars) b.hit = false;
+                document.getElementById('progress-bar').style.width = "0%";
+                document.getElementById('playPauseBtn').innerText = "PLAY";
+            }
         }
 
         function cambiarCancion() {
@@ -186,18 +187,16 @@
         }
 
         function togglePlay() { 
-            if (isReady) {
-                // p5.MediaElement usa métodos diferentes
-                if (audioElt.elt.paused) { audioElt.play(); document.getElementById('playPauseBtn').innerText = "PAUSA"; }
-                else { audioElt.pause(); document.getElementById('playPauseBtn').innerText = "PLAY"; }
-            }
+            if(song.isPlaying()) { song.pause(); document.getElementById('playPauseBtn').innerText = "PLAY"; } 
+            else { song.play(); document.getElementById('playPauseBtn').innerText = "PAUSA"; }
         }
-        function saltar(s) { audioElt.time(constrain(audioElt.time()+s, 0, audioElt.duration())); }
+        function saltar(s) { song.jump(constrain(song.currentTime()+s, 0, song.duration())); }
         function manejarClickBarra(e) {
             let rect = document.getElementById('progress-container').getBoundingClientRect();
-            audioElt.time(((e.clientX - rect.left) / rect.width) * audioElt.duration());
+            song.jump(((e.clientX - rect.left) / rect.width) * song.duration());
         }
         function freqToY(f) { return f <= 80 ? -100 : map(log(f), log(80), log(1100), height - 160, 50); }
+        function windowResized() { resizeCanvas(windowWidth, windowHeight); }
     </script>
 </body>
 </html>
