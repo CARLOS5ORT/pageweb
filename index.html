@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Voice Master Pro - Versión Estable</title>
+    <title>Voice Master Pro - Restauración Total</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/addons/p5.sound.min.js"></script>
     <script src="https://unpkg.com/ml5@0.12.2/dist/ml5.min.js"></script>
@@ -53,13 +53,13 @@
         let freqUser = 0;
         let score = 0;
         let bars = []; 
-        const noteList = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
         function setup() {
             createCanvas(windowWidth, windowHeight);
             generarBarras(); 
         }
 
+        // Generamos las barras magenta al inicio para asegurar que existan
         function generarBarras() {
             bars = [];
             for (let i = 0; i < 2000; i++) {
@@ -132,9 +132,7 @@
                 let y = freqToY(freqUser);
                 fill(0, 242, 255, 150); noStroke(); ellipse(width/2, y, 40, 40);
                 fill(255); ellipse(width/2, y, 15, 15);
-                let midi = Math.round(12 * (Math.log(freqUser/440)/Math.log(2)) + 69);
-                document.getElementById('noteName').innerText = noteList[midi % 12] || "--";
-            } else { document.getElementById('noteName').innerText = "--"; }
+            }
             
             actualizarInterfaz();
         }
