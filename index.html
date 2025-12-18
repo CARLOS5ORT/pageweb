@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Voice Master - Pro Analysis & Stop</title>
+    <title>Voice Master Pro - Restaurado</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/addons/p5.sound.min.js"></script>
     <script src="https://unpkg.com/ml5@0.12.2/dist/ml5.min.js"></script>
@@ -13,20 +13,20 @@
         #progress-container { width: 90%; height: 10px; background: #222; margin: 10px auto; border-radius: 5px; cursor: pointer; border: 1px solid #444; overflow: hidden; }
         #progress-bar { width: 0%; height: 100%; background: #00f2ff; }
         #controls-row { display: flex; justify-content: center; align-items: center; gap: 15px; }
-        .btn-ctrl { background: transparent; border: 1px solid #00f2ff; color: #00f2ff; padding: 8px 15px; cursor: pointer; border-radius: 20px; font-weight: bold; font-size: 12px; }
+        .btn-ctrl { background: transparent; border: 1px solid #00f2ff; color: #00f2ff; padding: 8px 15px; cursor: pointer; border-radius: 20px; font-weight: bold; }
         .btn-stop { border-color: #ff4444; color: #ff4444; }
-        .btn-stop:hover { background: #ff4444; color: white; }
-        #hud { position: absolute; top: 20px; right: 20px; text-align: right; }
+        #hud { position: absolute; top: 20px; right: 20px; text-align: right; pointer-events: none;}
         .hidden { display: none !important; }
     </style>
 </head>
 <body>
 
     <div id="setup-panel">
-        <h1>ANÁLISIS IA DUAL</h1>
+        <h1>VOICE MASTER PRO</h1>
+        <p>Las barras magenta han vuelto. ¡A afinar!</p>
         <input type="file" id="audioFile" accept="audio/*"><br><br>
-        <button class="btn-ctrl" onclick="iniciarTodo()" style="background:#00f2ff; color:black">CONECTAR SISTEMA</button>
-        <div id="status" style="margin-top:15px; color:#ff00ff">Esperando archivo...</div>
+        <button class="btn-ctrl" onclick="iniciarTodo()" style="background:#00f2ff; color:black">INICIAR</button>
+        <div id="status" style="margin-top:15px; color:#ff00ff">Sube un MP3</div>
     </div>
 
     <div id="footer-controls" class="hidden">
@@ -46,14 +46,24 @@
     </div>
 
     <script>
-        let mic, song, audioCtx;
-        let pitchUser, pitchSong;
+        let mic, song, audioCtx, pitchUser;
         let isReady = false;
         let freqUser = 0;
-        let freqSong = 0;
         let score = 0;
-        let history = []; 
+        let dots = []; 
         const noteList = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+        function setup() {
+            createCanvas(windowWidth, windowHeight);
+            generarNotas();
+        }
+
+        function generarNotas() {
+            dots = [];
+            for (let i = 0; i < 1000; i++) {
+                dots.push({ x: width + (i * 250), y: random(150, height - 160), hit: false });
+            }
+        }
 
         async function iniciarTodo() {
             if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -63,7 +73,7 @@
             if (!fileInput.files[0]) return;
             
             const status = document.getElementById('status');
-            status.innerText = "INICIALIZANDO IA...";
+            status.innerText = "CARGANDO AUDIO Y IA...";
             
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -71,53 +81,33 @@
                 
                 song = loadSound(url, () => {
                     const modelURL = 'https://raw.githubusercontent.com/ml5js/ml5-data-and-models/main/models/pitch-detection/crepe/';
-                    
                     pitchUser = ml5.pitchDetection(modelURL, audioCtx, stream, () => {
-                        pitchSong = ml5.pitchDetection(modelURL, audioCtx, song.bufferSource, () => {
-                            document.getElementById('setup-panel').classList.add('hidden');
-                            document.getElementById('footer-controls').classList.remove('hidden');
-                            document.getElementById('hud').classList.remove('hidden');
-                            song.play();
-                            isReady = true;
-                            startDetection();
-                        });
+                        document.getElementById('setup-panel').classList.add('hidden');
+                        document.getElementById('footer-controls').classList.remove('hidden');
+                        document.getElementById('hud').classList.remove('hidden');
+                        song.play();
+                        isReady = true;
+                        listen();
                     });
                 });
             } catch (e) { status.innerText = "Error: " + e.message; }
         }
 
-        // FUNCIÓN DE STOP / REINICIO
         function detenerSistema() {
             if (song) {
-                song.stop(); // Para la música y vuelve al segundo 0
-                history = []; // Limpia la serpiente de notas
-                score = 0; // Reinicia puntos
+                song.stop();
+                score = 0;
+                for(let d of dots) d.hit = false; // Reset de hits en las barras
                 document.getElementById('playPauseBtn').innerText = "PLAY";
                 document.getElementById('scoreDisplay').innerText = "PUNTOS: 0";
             }
         }
 
-        function startDetection() {
+        function listen() {
             if (!isReady) return;
-            
             pitchUser.getPitch((err, f) => {
                 if (f) freqUser = f;
-                
-                pitchSong.getPitch((errS, fS) => {
-                    if (fS) freqSong = fS;
-                    
-                    if (song.isPlaying()) {
-                        history.push({ 
-                            songY: freqToY(freqSong), 
-                            userY: freqToY(freqUser),
-                            hit: (freqUser > 0 && Math.abs(freqToY(freqUser) - freqToY(freqSong)) < 30)
-                        });
-                        if (history.length > 300) history.shift();
-                        if (history.length > 0 && history[history.length-1].hit) score++;
-                    }
-                    
-                    startDetection();
-                });
+                listen();
             });
         }
 
@@ -127,59 +117,62 @@
 
             drawNoteScale();
 
-            // Dibujar Guía de la Canción (FANTASMA)
-            noFill();
-            stroke(255, 0, 255, 150);
-            strokeWeight(3);
-            beginShape();
-            for (let i = 0; i < history.length; i++) {
-                let x = map(i, 0, history.length, 50, width - 50);
-                if (history[i].songY > 0) vertex(x, history[i].songY);
-            }
-            endShape();
+            // Desplazamiento basado en el tiempo
+            let timeShift = song.currentTime() * 120; 
 
-            // Dibujar tu Voz (REAL)
-            stroke(0, 242, 255);
-            strokeWeight(5);
-            beginShape();
-            for (let i = 0; i < history.length; i++) {
-                let x = map(i, 0, history.length, 50, width - 50);
-                if (history[i].userY > 0) vertex(x, history[i].userY);
-            }
-            endShape();
+            // DIBUJAR LAS BARRAS MAGENTA (EL CAMINO)
+            for (let d of dots) {
+                let currentX = d.x - timeShift;
+                if (currentX > -200 && currentX < width + 200) {
+                    strokeWeight(10);
+                    stroke(d.hit ? "#00ff96" : "rgba(255, 0, 255, 0.4)");
+                    line(currentX, d.y, currentX + 180, d.y);
 
+                    // COLISIÓN CON TU VOZ
+                    if (currentX < width/2 && currentX > width/2 - 180) {
+                        let userY = freqToY(freqUser);
+                        if (freqUser > 0 && Math.abs(userY - d.y) < 40) {
+                            if (!d.hit) { d.hit = true; score += 10; }
+                        }
+                    }
+                }
+            }
+
+            // TU VOZ (INDICADOR CIAN)
+            if (freqUser > 0) {
+                let y = freqToY(freqUser);
+                fill(255); noStroke(); ellipse(width/2, y, 20, 20);
+                fill(0, 242, 255, 80); ellipse(width/2, y, 40, 40);
+                
+                let midi = Math.round(12 * (Math.log(freqUser / 440) / Math.log(2)) + 69);
+                document.getElementById('noteName').innerText = noteList[midi % 12];
+            }
+            
             updateUI();
         }
 
         function drawNoteScale() {
+            textAlign(LEFT, CENTER); textSize(11);
             for (let i = 36; i < 84; i++) {
                 let y = freqToY(440 * Math.pow(2, (i - 69) / 12));
                 if (y > 0 && y < height) {
-                    stroke(255, 10); line(0, y, width, y);
+                    stroke(255, 15); line(65, y, width, y);
+                    noStroke(); fill(i % 12 === 0 ? '#00f2ff' : 100);
+                    text(noteList[i % 12] + Math.floor(i/12-1), 25, y);
                 }
             }
         }
 
         function updateUI() {
-            let progress = (song.currentTime() / song.duration()) * 100;
-            document.getElementById('progress-bar').style.width = progress + "%";
-            document.getElementById('time-info').innerText = floor(song.currentTime()) + "s";
+            let prg = (song.currentTime() / song.duration()) * 100;
+            document.getElementById('progress-bar').style.width = prg + "%";
+            document.getElementById('time-info').innerText = floor(song.currentTime()) + "s / " + floor(song.duration()) + "s";
             document.getElementById('scoreDisplay').innerText = "PUNTOS: " + score;
-            
-            if (freqUser > 0) {
-                let midi = Math.round(12 * (Math.log(freqUser / 440) / Math.log(2)) + 69);
-                document.getElementById('noteName').innerText = noteList[midi % 12];
-            }
         }
 
         function togglePlay() { 
-            if(song.isPlaying()) {
-                song.pause();
-                document.getElementById('playPauseBtn').innerText = "PLAY";
-            } else {
-                song.play();
-                document.getElementById('playPauseBtn').innerText = "PAUSA";
-            }
+            if(song.isPlaying()) { song.pause(); document.getElementById('playPauseBtn').innerText = "PLAY"; } 
+            else { song.play(); document.getElementById('playPauseBtn').innerText = "PAUSA"; }
         }
         function saltar(s) { song.jump(constrain(song.currentTime()+s, 0, song.duration())); }
         function manejarClickBarra(e) {
@@ -187,6 +180,7 @@
             song.jump(((e.clientX - rect.left) / rect.width) * song.duration());
         }
         function freqToY(f) { return f <= 80 ? -100 : map(log(f), log(80), log(1100), height - 160, 50); }
+        function windowResized() { resizeCanvas(windowWidth, windowHeight); }
     </script>
 </body>
 </html>
