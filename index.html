@@ -110,4 +110,131 @@
                 isReady = true;
                 detectar();
             } catch (err) {
-                alert("Error al acceder al micrófono:
+                alert("Error al acceder al micrófono: " + err);
+            }
+        }
+
+        function detectar() {
+            if (!isReady) return;
+            
+            pitchUser.getPitch((errU, fU) => {
+                freqUser = fU || 0;
+                
+                pitchSong.getPitch((errS, fS) => {
+                    freqSong = fS || 0;
+                    
+                    if (song.isPlaying() && freqSong > 80) {
+                        bars.push({
+                            x: width, 
+                            y: freqToY(freqSong),
+                            time: song.currentTime(),
+                            hit: false
+                        });
+                    }
+                    
+                    if (bars.length > 500) bars.shift();
+                    detectar();
+                });
+            });
+        }
+
+        function detenerSistema() {
+            if (song) { 
+                song.stop(); 
+                bars = []; 
+                score = 0; 
+                freqUser = 0; 
+            }
+            document.getElementById('playPauseBtn').innerText = "PLAY";
+            document.getElementById('progress-bar').style.width = "0%";
+            document.getElementById('scoreDisplay').innerText = "PUNTOS: 0";
+            document.getElementById('noteName').innerText = "--";
+        }
+
+        function cambiarCancion() {
+            detenerSistema();
+            isReady = false;
+            document.getElementById('setup-panel').classList.remove('hidden');
+            document.getElementById('footer-controls').classList.add('hidden');
+            document.getElementById('hud').classList.add('hidden');
+            document.getElementById('status').innerText = "Selecciona otro MP3";
+        }
+
+        function draw() {
+            background(5, 5, 15);
+            if (!isReady) return;
+
+            drawScale();
+
+            // Dibujar Barras Magenta (Notas Reales del MP3)
+            for (let i = bars.length - 1; i >= 0; i--) {
+                let b = bars[i];
+                // El tiempo actual de la canción dicta dónde están las barras en X
+                let x = width/2 + (b.time - song.currentTime()) * 400; 
+
+                if (x > -200 && x < width + 200) {
+                    strokeWeight(12);
+                    stroke(b.hit ? "#00ff96" : "rgba(255, 0, 255, 0.7)");
+                    line(x, b.y, x + 35, b.y);
+
+                    // Colisión mejorada
+                    if (Math.abs(x - width/2) < 25) {
+                        let userY = freqToY(freqUser);
+                        if (freqUser > 0 && Math.abs(userY - b.y) < 35) {
+                            if (!b.hit) { b.hit = true; score += 10; }
+                        }
+                    }
+                }
+            }
+
+            // Indicador de Voz (Usuario)
+            if (freqUser > 0) {
+                let y = freqToY(freqUser);
+                fill(0, 242, 255, 100); noStroke(); ellipse(width/2, y, 40, 40);
+                fill(255); ellipse(width/2, y, 15, 15);
+                
+                let midi = Math.round(12 * (Math.log(freqUser/440)/Math.log(2)) + 69);
+                document.getElementById('noteName').innerText = noteList[midi % 12];
+            } else { 
+                document.getElementById('noteName').innerText = "--"; 
+            }
+
+            updateUI();
+        }
+
+        function drawScale() {
+            textAlign(LEFT, CENTER); textSize(10);
+            for (let i = 36; i < 84; i++) {
+                let y = freqToY(440 * Math.pow(2, (i - 69) / 12));
+                if (y > 0 && y < height) {
+                    stroke(255, 10); line(70, y, width, y);
+                    if (i % 12 === 0) { noStroke(); fill(0, 242, 255, 120); text(noteList[i%12], 30, y); }
+                }
+            }
+        }
+
+        function updateUI() {
+            if(!song) return;
+            let cur = song.currentTime(); 
+            let dur = song.duration();
+            if(dur > 0) {
+                document.getElementById('progress-bar').style.width = (cur/dur*100) + "%";
+                document.getElementById('time-info').innerText = floor(cur) + "s / " + floor(dur) + "s";
+                document.getElementById('scoreDisplay').innerText = "PUNTOS: " + score;
+            }
+        }
+
+        function togglePlay() { 
+            if(song.isPlaying()) { song.pause(); document.getElementById('playPauseBtn').innerText = "PLAY"; } 
+            else { song.play(); document.getElementById('playPauseBtn').innerText = "PAUSA"; }
+        }
+        function saltar(s) { song.jump(constrain(song.currentTime()+s, 0, song.duration())); }
+        function manejarClickBarra(e) {
+            let rect = document.getElementById('progress-container').getBoundingClientRect();
+            song.jump(((e.clientX - rect.left) / rect.width) * song.duration());
+        }
+        function freqToY(f) { return f <= 80 ? -100 : map(log(f), log(80), log(1100), height - 160, 50); }
+        function windowResized() { resizeCanvas(windowWidth, windowHeight); }
+    </script>
+</body>
+</html>
