@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Voice Master Pro - Restauración Total</title>
+    <title>Voice Master Pro - FIX FINAL</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/addons/p5.sound.min.js"></script>
     <script src="https://unpkg.com/ml5@0.12.2/dist/ml5.min.js"></script>
@@ -71,64 +71,68 @@
             await audioCtx.resume();
 
             const url = URL.createObjectURL(fileInput.files[0]);
+            
             song = loadSound(url, () => {
                 const modelURL = 'https://raw.githubusercontent.com/ml5js/ml5-data-and-models/main/models/pitch-detection/crepe/';
                 
-                // Micro del usuario
+                // IA para el Usuario (Micro)
                 navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
                     pitchUser = ml5.pitchDetection(modelURL, audioCtx, stream, () => {
-                        // IA de la canción
+                        // AQUÍ ESTÁ EL TRUCO: Conectamos la IA al master output
+                        // Esto analiza lo que el navegador está "escuchando" de la canción
                         pitchSong = ml5.pitchDetection(modelURL, audioCtx, song.bufferSource, () => {
                             isReady = true;
                             song.play();
-                            loopPrincipal();
+                            // Iniciamos el bucle de dibujo y detección
+                            cicloPrincipal();
                         });
                     });
                 });
             });
         }
 
-        function loopPrincipal() {
+        function cicloPrincipal() {
             if (!isReady) return;
 
+            // Detección de la canción
             if (song.isPlaying()) {
                 pitchSong.getPitch((err, f) => {
                     if (f && f > 80) {
-                        // Crear barra rectangular magenta cada 0.1s
-                        if (bars.length === 0 || song.currentTime() - bars[bars.length-1].time > 0.1) {
+                        // Generamos barra magenta solo si hay una nota clara
+                        if (bars.length === 0 || (song.currentTime() - bars[bars.length-1].time > 0.12)) {
                             bars.push({ y: freqToY(f), time: song.currentTime(), hit: false });
                         }
                     }
                 });
             }
 
+            // Detección del usuario
             pitchUser.getPitch((err, fU) => { freqUser = fU || 0; });
 
             if (bars.length > 500) bars.shift();
-            requestAnimationFrame(loopPrincipal);
+            requestAnimationFrame(cicloPrincipal);
         }
 
         function draw() {
             background(5, 5, 15);
             if (!isReady) return;
 
-            // Dibujar parrilla de notas primero
-            drawNoteGrid();
+            // 1. Dibujamos la parrilla de notas (fondo)
+            drawGrid();
 
+            // 2. Dibujamos las BARRAS MAGENTA
             let now = song.currentTime();
-            
-            // Dibujar barras magenta rectangulares
             for (let i = bars.length - 1; i >= 0; i--) {
                 let b = bars[i];
                 let x = width/2 + (b.time - now) * 400;
 
-                if (x > 80 && x < width + 100) {
+                if (x > 80 && x < width + 200) {
                     strokeWeight(12);
                     stroke(b.hit ? "#00ff96" : "rgba(255, 0, 255, 0.8)");
                     line(x, b.y, x + 40, b.y);
 
                     // Colisión
-                    if (Math.abs(x - width/2) < 20 && freqUser > 0) {
+                    if (Math.abs(x - width/2) < 25 && freqUser > 0) {
                         if (Math.abs(freqToY(freqUser) - b.y) < 35) {
                             if (!b.hit) { b.hit = true; score += 10; }
                         }
@@ -136,7 +140,7 @@
                 }
             }
 
-            // Voz usuario
+            // 3. Dibujamos la voz del usuario (Cian)
             if (freqUser > 0) {
                 let y = freqToY(freqUser);
                 fill(0, 242, 255, 150); noStroke(); ellipse(width/2, y, 40, 40);
@@ -148,7 +152,7 @@
             updateUI();
         }
 
-        function drawNoteGrid() {
+        function drawGrid() {
             textAlign(LEFT, CENTER);
             textSize(12);
             for (let i = 36; i < 84; i++) {
@@ -166,6 +170,7 @@
         }
 
         function updateUI() {
+            if(!song) return;
             let cur = song.currentTime(); let dur = song.duration();
             document.getElementById('progress-bar').style.width = (cur/dur*100) + "%";
             document.getElementById('time-info').innerText = floor(cur) + "s / " + floor(dur) + "s";
@@ -193,14 +198,11 @@
         }
 
         function saltar(s) { song.jump(constrain(song.currentTime()+s, 0, song.duration())); }
-        
         function manejarClickBarra(e) {
             let rect = document.getElementById('progress-container').getBoundingClientRect();
             song.jump(((e.clientX - rect.left) / rect.width) * song.duration());
         }
-
         function freqToY(f) { return f <= 80 ? -100 : map(log(f), log(80), log(1100), height - 160, 50); }
-        function windowResized() { resizeCanvas(windowWidth, windowHeight); }
     </script>
 </body>
 </html>
