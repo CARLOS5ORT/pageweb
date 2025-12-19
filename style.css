@@ -172,4 +172,17 @@ body {
     font-size: 14px;
     line-height: 1.4;
 }
+#key-panel {
+    position: absolute;
+    bottom: 90px;
+    right: 20px;
+    background: rgba(0,0,0,0.7);
+    border: 1px solid #00f2ff;
+    border-radius: 14px;
+    padding: 10px 16px;
+    font-size: 14px;
+    color: #00f2ff;
+    font-weight: bold;
+    letter-spacing: 1px;
+}
 
