@@ -109,18 +109,17 @@ body {
 
 <script>
 let song, mic, pitchUser, fftSong, amp;
-let bars=[];
-let freqUser=0, smoothFreq=0;
-let ready=false;
-
-let totalFrames=0, tunedFrames=0;
-const alpha=0.25; // suavizado
+let bars = [];
+let trails = [[]];
+let freqUser = 0, smoothFreq = 0;
+let ready = false;
+let totalFrames = 0, tunedFrames = 0;
+const alpha = 0.25;
+const TOL = 40;
 
 const notes=["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 
-function setup(){
-    createCanvas(windowWidth, windowHeight);
-}
+function setup(){ createCanvas(windowWidth, windowHeight); }
 
 async function iniciarTodo(){
     let file=document.getElementById('audioFile').files[0];
@@ -141,11 +140,9 @@ async function iniciarTodo(){
             amp=new p5.Amplitude();
             amp.setInput(mic);
 
-            const modelURL=
-            'https://raw.githubusercontent.com/ml5js/ml5-data-and-models/main/models/pitch-detection/crepe/';
+            const modelURL='https://raw.githubusercontent.com/ml5js/ml5-data-and-models/main/models/pitch-detection/crepe/';
             pitchUser=ml5.pitchDetection(modelURL,getAudioContext(),mic.stream,()=>{
-                ready=true;
-                song.play();
+                ready=true; song.play();
             });
         });
     });
@@ -156,61 +153,73 @@ function draw(){
     if(!ready)return;
 
     drawGrid();
-
     let now=song.currentTime();
     let fSong=detectPitchSong();
 
-    // Barras MÁS LENTAS
-    if(fSong && fSong>80 && fSong<1100){
-        if(bars.length===0 || now-bars.at(-1).time>0.2){
-            bars.push({y:freqToY(fSong),time:now,freq:fSong});
-        }
+    if(fSong && now-(bars.at(-1)?.time||0)>0.2){
+        bars.push({y:freqToY(fSong),time:now,freq:fSong});
     }
 
     pitchUser.getPitch((e,f)=>{
-        if(amp.getLevel()<0.02){freqUser=0;return;}
+        if(amp.getLevel()<0.02){
+            if(trails.at(-1).length>0) trails.push([]);
+            freqUser=0; return;
+        }
         smoothFreq=alpha*(f||0)+(1-alpha)*smoothFreq;
         freqUser=smoothFreq;
     });
 
-    for(let b of bars){
-        let x=width/2+(b.time-now)*250; // velocidad reducida
-        if(x<80||x>width+100)continue;
+    // Banda de afinación
+    if(fSong){
+        let y=freqToY(fSong);
+        let y1=freqToY(fSong*Math.pow(2,TOL/1200));
+        let y2=freqToY(fSong*Math.pow(2,-TOL/1200));
+        noStroke(); fill(0,255,150,40);
+        rect(80,min(y1,y2),width,min(abs(y1-y2),height));
+    }
 
-        stroke("#ff00ff");
-        strokeWeight(10);
+    // Barras referencia
+    stroke("#ff00ff"); strokeWeight(10);
+    for(let b of bars){
+        let x=width/2+(b.time-now)*250;
+        if(x<80||x>width)continue;
         line(x,b.y,x+45,b.y);
     }
 
+    // Voz
     if(freqUser>0){
         let y=freqToY(freqUser);
-        fill("#00ff96");noStroke();
-        ellipse(width/2,y,40);
+        let cents=fSong?1200*Math.log2(freqUser/fSong):0;
+        totalFrames++; if(Math.abs(cents)<TOL)tunedFrames++;
 
-        if(fSong){
-            let cents=1200*Math.log2(freqUser/fSong);
-            totalFrames++;
-            if(Math.abs(cents)<40)tunedFrames++;
-        }
+        let col=cents<-TOL?"#ff4444":cents>TOL?"#4488ff":"#00ff96";
+        trails.at(-1).push({y:y,time:now,color:col});
 
         let midi=Math.round(12*Math.log2(freqUser/440)+69);
-        let note=notes[midi%12];
-        let octave=Math.floor(midi/12)-1;
-        document.getElementById('note').innerText=note+octave;
-    }else{
-        document.getElementById('note').innerText="--";
+        document.getElementById('note').innerText=notes[midi%12]+(Math.floor(midi/12)-1);
+    } else document.getElementById('note').innerText="--";
+
+    // Dibujar estelas
+    for(let t of trails){
+        beginShape(); noFill();
+        for(let p of t){
+            let x=width/2+(p.time-now)*250;
+            if(x<80||x>width)continue;
+            stroke(p.color); strokeWeight(8);
+            vertex(x,p.y);
+        }
+        endShape();
     }
 
+    trails=trails.map(t=>t.filter(p=>now-p.time<4));
     updateUI();
 }
 
 function detectPitchSong(){
-    let w=fftSong.waveform();
-    let best=-1,bestCorr=0;
+    let w=fftSong.waveform(),best=-1,max=0;
     for(let o=20;o<1000;o++){
-        let c=0;
-        for(let i=0;i<w.length-o;i++)c+=w[i]*w[i+o];
-        if(c>bestCorr){bestCorr=c;best=o;}
+        let c=0; for(let i=0;i<w.length-o;i++)c+=w[i]*w[i+o];
+        if(c>max){max=c;best=o;}
     }
     return best>0?getAudioContext().sampleRate/best:null;
 }
@@ -219,11 +228,11 @@ function drawGrid(){
     for(let i=36;i<84;i++){
         let f=440*Math.pow(2,(i-69)/12);
         let y=freqToY(f);
-        stroke(255,10);line(80,y,width,y);
-        noStroke();fill(0,242,255,120);
+        stroke(255,10); line(80,y,width,y);
+        noStroke(); fill(0,242,255,120);
         text(notes[i%12]+(Math.floor(i/12)-1),25,y);
     }
-    stroke(0,242,255,40);line(80,0,80,height);
+    stroke(0,242,255,40); line(80,0,80,height);
 }
 
 function freqToY(f){
@@ -234,34 +243,16 @@ function updateUI(){
     let c=song.currentTime(),d=song.duration();
     document.getElementById('progress-bar').style.width=(c/d*100)+"%";
     document.getElementById('time').innerText=floor(c)+" / "+floor(d);
-    document.getElementById('score').innerText=
-      "AFINACIÓN: "+(totalFrames?Math.round(tunedFrames/totalFrames*100):0)+"%";
+    document.getElementById('score').innerText="AFINACIÓN: "+Math.round(tunedFrames/Math.max(1,totalFrames)*100)+"%";
 }
 
-function togglePlay(){
-    if(song.isPlaying()){song.pause();playBtn.innerText="PLAY";}
-    else{song.play();playBtn.innerText="PAUSA";}
-}
-function saltar(s){
-    song.jump(constrain(song.currentTime()+s,0,song.duration()));
-}
-function detener(){
-    song.stop();
-    bars=[];
-    totalFrames=0;
-    tunedFrames=0;
-}
-function cambiarCancion(){
-    detener();
-    location.reload();
-}
-function clickBarra(e){
-    let r=e.target.getBoundingClientRect();
-    song.jump((e.clientX-r.left)/r.width*song.duration());
-}
-function windowResized(){
-    resizeCanvas(windowWidth,windowHeight);
-}
+function togglePlay(){song.isPlaying()?(song.pause(),playBtn.innerText="PLAY"):(song.play(),playBtn.innerText="PAUSA");}
+function saltar(s){song.jump(constrain(song.currentTime()+s,0,song.duration()));}
+function detener(){song.stop();bars=[];trails=[[]];totalFrames=tunedFrames=0;}
+function cambiarCancion(){detener();location.reload();}
+function clickBarra(e){let r=e.target.getBoundingClientRect();song.jump((e.clientX-r.left)/r.width*song.duration());}
+function windowResized(){resizeCanvas(windowWidth,windowHeight);}
+function keyPressed(){ if(key==='s'||key==='S') saveCanvas('voice_master','png'); }
 </script>
 </body>
 </html>
