@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Voice Master Pro - Notas Reales IA</title>
+    <title>Voice Master Pro - IA Real Time</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/addons/p5.sound.min.js"></script>
     <script src="https://unpkg.com/ml5@0.12.2/dist/ml5.min.js"></script>
@@ -23,7 +23,7 @@
 
     <div id="setup-panel">
         <h1 style="margin:0">VOICE MASTER</h1>
-        <p>Análisis de Tono Real IA</p>
+        <p>Análisis de Notas Reales IA</p>
         <input type="file" id="audioFile" accept="audio/*"><br><br>
         <button class="btn-ctrl" onclick="iniciarTodo()" style="background:#00f2ff; color:black">ENTRENAR</button>
     </div>
@@ -50,7 +50,8 @@
         let isReady = false;
         let freqUser = 0;
         let score = 0;
-        let bars = []; 
+        let bars = [];
+        const noteList = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
         function setup() {
             createCanvas(windowWidth, windowHeight);
@@ -73,51 +74,55 @@
                 mic.start(() => {
                     const modelURL = 'https://raw.githubusercontent.com/ml5js/ml5-data-and-models/main/models/pitch-detection/crepe/';
                     
-                    // IA Usuario
+                    // IA para tu voz
                     pitchUser = ml5.pitchDetection(modelURL, audioCtx, mic.stream, () => {
-                        // IA Canción (NOTAS REALES)
+                        // IA para las notas reales de la canción
                         pitchSong = ml5.pitchDetection(modelURL, audioCtx, song.bufferSource, () => {
                             isReady = true;
                             song.play();
-                            ejecutarIA();
+                            procesarIA();
                         });
                     });
                 });
             });
         }
 
-        function ejecutarIA() {
+        function procesarIA() {
             if (!isReady) return;
 
-            // Analizar nota real del MP3
+            // Análisis de la canción para generar barras magenta
             if (song.isPlaying()) {
                 pitchSong.getPitch((err, f) => {
                     if (f && f > 50) {
-                        if (bars.length === 0 || song.currentTime() - bars[bars.length-1].time > 0.12) {
+                        if (bars.length === 0 || song.currentTime() - bars[bars.length-1].time > 0.15) {
                             bars.push({ y: freqToY(f), time: song.currentTime(), hit: false });
                         }
                     }
                 });
             }
 
+            // Análisis de tu voz
             pitchUser.getPitch((err, fU) => { freqUser = fU || 0; });
 
             if (bars.length > 500) bars.shift();
-            requestAnimationFrame(ejecutarIA);
+            requestAnimationFrame(procesarIA);
         }
 
         function draw() {
             background(5, 5, 15);
             if (!isReady) return;
 
+            // 1. DIBUJAR PARRILLA DE REFERENCIA
+            drawGrid();
+
             let now = song.currentTime();
             
-            // Dibujar barras magenta rectangulares
+            // 2. DIBUJAR BARRAS MAGENTA (NOTAS REALES)
             for (let i = bars.length - 1; i >= 0; i--) {
                 let b = bars[i];
                 let x = width/2 + (b.time - now) * 400;
 
-                if (x > -100 && x < width + 100) {
+                if (x > 80 && x < width + 100) {
                     strokeWeight(12);
                     stroke(b.hit ? "#00ff96" : "rgba(255, 0, 255, 0.8)");
                     line(x, b.y, x + 40, b.y);
@@ -130,14 +135,32 @@
                 }
             }
 
-            // Voz usuario
+            // 3. INDICADOR CIAN (TU VOZ)
             if (freqUser > 0) {
                 let y = freqToY(freqUser);
                 fill(0, 242, 255, 150); noStroke(); ellipse(width/2, y, 40, 40);
                 fill(255); ellipse(width/2, y, 15, 15);
+                let midi = Math.round(12 * (Math.log(freqUser/440)/Math.log(2)) + 69);
+                document.getElementById('noteName').innerText = noteList[midi % 12];
             }
             
             updateUI();
+        }
+
+        function drawGrid() {
+            textAlign(LEFT, CENTER); textSize(12);
+            for (let i = 36; i < 84; i++) {
+                let f = 440 * Math.pow(2, (i - 69) / 12);
+                let y = freqToY(f);
+                if (y > 0 && y < height) {
+                    stroke(255, 12); line(80, y, width, y);
+                    noStroke();
+                    let n = noteList[i % 12];
+                    fill(255, 50);
+                    text(n + (Math.floor(i/12)-1), 30, y);
+                }
+            }
+            stroke(0, 242, 255, 40); line(80, 0, 80, height);
         }
 
         function updateUI() {
@@ -147,18 +170,17 @@
             document.getElementById('scoreDisplay').innerText = "PUNTOS: " + score;
         }
 
+        function freqToY(f) { return f <= 80 ? -100 : map(log(f), log(80), log(1100), height - 160, 50); }
         function togglePlay() { 
             if(song.isPlaying()) { song.pause(); document.getElementById('playPauseBtn').innerText = "PLAY"; } 
             else { song.play(); document.getElementById('playPauseBtn').innerText = "PAUSA"; }
         }
-
         function detenerSistema() { song.stop(); bars = []; score = 0; }
         function saltar(s) { song.jump(constrain(song.currentTime()+s, 0, song.duration())); }
         function manejarClickBarra(e) {
             let rect = document.getElementById('progress-container').getBoundingClientRect();
             song.jump(((e.clientX - rect.left) / rect.width) * song.duration());
         }
-        function freqToY(f) { return f <= 80 ? -100 : map(log(f), log(80), log(1100), height - 160, 50); }
     </script>
 </body>
 </html>
