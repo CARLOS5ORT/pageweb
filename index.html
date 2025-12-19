@@ -103,26 +103,28 @@ body {
 </div>
 
 <div id="hud" class="hidden">
-    <div id="note" style="font-size:60px;color:#ff00ff">--</div>
-    <div id="score">PUNTOS: 0</div>
+    <div id="note" style="font-size:60px;color:#00ff96">--</div>
+    <div id="score">AFINACIÓN: 0%</div>
 </div>
 
 <script>
-let song, mic, pitchUser, fftSong;
-let bars = [];
-let freqUser = 0;
-let score = 0;
-let ready = false;
+let song, mic, pitchUser, fftSong, amp;
+let bars=[];
+let freqUser=0, smoothFreq=0;
+let ready=false;
 
-const notes = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+let totalFrames=0, tunedFrames=0;
+const alpha=0.25; // suavizado
 
-function setup() {
+const notes=["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+
+function setup(){
     createCanvas(windowWidth, windowHeight);
 }
 
-async function iniciarTodo() {
-    let file = document.getElementById('audioFile').files[0];
-    if (!file) return;
+async function iniciarTodo(){
+    let file=document.getElementById('audioFile').files[0];
+    if(!file)return;
 
     document.getElementById('setup-panel').classList.add('hidden');
     document.getElementById('footer-controls').classList.remove('hidden');
@@ -130,125 +132,135 @@ async function iniciarTodo() {
 
     await getAudioContext().resume();
 
-    song = loadSound(URL.createObjectURL(file), () => {
-        fftSong = new p5.FFT(0.9, 2048);
+    song=loadSound(URL.createObjectURL(file),()=>{
+        fftSong=new p5.FFT(0.9,2048);
         fftSong.setInput(song);
 
-        mic = new p5.AudioIn();
-        mic.start(() => {
-            const modelURL =
+        mic=new p5.AudioIn();
+        mic.start(()=>{
+            amp=new p5.Amplitude();
+            amp.setInput(mic);
+
+            const modelURL=
             'https://raw.githubusercontent.com/ml5js/ml5-data-and-models/main/models/pitch-detection/crepe/';
-            pitchUser = ml5.pitchDetection(modelURL, getAudioContext(), mic.stream, () => {
-                ready = true;
+            pitchUser=ml5.pitchDetection(modelURL,getAudioContext(),mic.stream,()=>{
+                ready=true;
                 song.play();
             });
         });
     });
 }
 
-function draw() {
+function draw(){
     background(5,5,15);
-    if (!ready) return;
+    if(!ready)return;
 
     drawGrid();
 
-    let now = song.currentTime();
-    let fSong = detectPitchSong();
+    let now=song.currentTime();
+    let fSong=detectPitchSong();
 
-    if (fSong && fSong > 80 && fSong < 1100) {
-        if (bars.length === 0 || now - bars[bars.length-1].time > 0.12) {
-            bars.push({ y: freqToY(fSong), time: now, hit:false });
+    // Barras MÁS LENTAS
+    if(fSong && fSong>80 && fSong<1100){
+        if(bars.length===0 || now-bars.at(-1).time>0.2){
+            bars.push({y:freqToY(fSong),time:now,freq:fSong});
         }
     }
 
-    pitchUser.getPitch((e,f)=> freqUser = f || 0);
+    pitchUser.getPitch((e,f)=>{
+        if(amp.getLevel()<0.02){freqUser=0;return;}
+        smoothFreq=alpha*(f||0)+(1-alpha)*smoothFreq;
+        freqUser=smoothFreq;
+    });
 
-    for (let b of bars) {
-        let x = width/2 + (b.time - now) * 400;
-        if (x < 80 || x > width+100) continue;
+    for(let b of bars){
+        let x=width/2+(b.time-now)*250; // velocidad reducida
+        if(x<80||x>width+100)continue;
 
-        strokeWeight(12);
-        stroke(b.hit ? "#00ff96" : "#ff00ff");
-        line(x, b.y, x+45, b.y);
-
-        if (abs(x-width/2)<20 && freqUser>0) {
-            if (abs(freqToY(freqUser)-b.y)<35 && !b.hit) {
-                b.hit = true;
-                score += 10;
-            }
-        }
+        stroke("#ff00ff");
+        strokeWeight(10);
+        line(x,b.y,x+45,b.y);
     }
 
-    if (freqUser>0) {
-        let y = freqToY(freqUser);
-        fill(0,242,255,150); noStroke(); ellipse(width/2,y,40);
-        fill(255); ellipse(width/2,y,15);
-        let midi = round(12*log(freqUser/440)/log(2)+69);
-        document.getElementById('note').innerText = notes[midi%12];
-    } else document.getElementById('note').innerText="--";
+    if(freqUser>0){
+        let y=freqToY(freqUser);
+        fill("#00ff96");noStroke();
+        ellipse(width/2,y,40);
+
+        if(fSong){
+            let cents=1200*Math.log2(freqUser/fSong);
+            totalFrames++;
+            if(Math.abs(cents)<40)tunedFrames++;
+        }
+
+        let midi=Math.round(12*Math.log2(freqUser/440)+69);
+        let note=notes[midi%12];
+        let octave=Math.floor(midi/12)-1;
+        document.getElementById('note').innerText=note+octave;
+    }else{
+        document.getElementById('note').innerText="--";
+    }
 
     updateUI();
 }
 
-function detectPitchSong() {
-    let w = fftSong.waveform();
-    let best = -1, bestCorr = 0;
-
-    for (let o=20;o<1000;o++) {
+function detectPitchSong(){
+    let w=fftSong.waveform();
+    let best=-1,bestCorr=0;
+    for(let o=20;o<1000;o++){
         let c=0;
-        for (let i=0;i<w.length-o;i++) c+=w[i]*w[i+o];
-        if (c>bestCorr) { bestCorr=c; best=o; }
+        for(let i=0;i<w.length-o;i++)c+=w[i]*w[i+o];
+        if(c>bestCorr){bestCorr=c;best=o;}
     }
-    return best>0 ? getAudioContext().sampleRate/best : null;
+    return best>0?getAudioContext().sampleRate/best:null;
 }
 
-function drawGrid() {
-    for (let i=36;i<84;i++) {
+function drawGrid(){
+    for(let i=36;i<84;i++){
         let f=440*Math.pow(2,(i-69)/12);
         let y=freqToY(f);
-        stroke(255,10); line(80,y,width,y);
-        noStroke(); fill(0,242,255,120);
-        text(notes[i%12]+(floor(i/12)-1),25,y);
+        stroke(255,10);line(80,y,width,y);
+        noStroke();fill(0,242,255,120);
+        text(notes[i%12]+(Math.floor(i/12)-1),25,y);
     }
-    stroke(0,242,255,40); line(80,0,80,height);
+    stroke(0,242,255,40);line(80,0,80,height);
 }
 
-function freqToY(f) {
-    return map(log(f), log(80), log(1100), height-160, 50);
+function freqToY(f){
+    return map(Math.log(f),Math.log(80),Math.log(1100),height-160,50);
 }
 
-function updateUI() {
-    let c=song.currentTime(), d=song.duration();
-    document.getElementById('progress-bar').style.width = (c/d*100)+"%";
-    document.getElementById('time').innerText = floor(c)+" / "+floor(d);
-    document.getElementById('score').innerText = "PUNTOS: "+score;
+function updateUI(){
+    let c=song.currentTime(),d=song.duration();
+    document.getElementById('progress-bar').style.width=(c/d*100)+"%";
+    document.getElementById('time').innerText=floor(c)+" / "+floor(d);
+    document.getElementById('score').innerText=
+      "AFINACIÓN: "+(totalFrames?Math.round(tunedFrames/totalFrames*100):0)+"%";
 }
 
-function togglePlay() {
-    if (song.isPlaying()) { song.pause(); playBtn.innerText="PLAY"; }
-    else { song.play(); playBtn.innerText="PAUSA"; }
+function togglePlay(){
+    if(song.isPlaying()){song.pause();playBtn.innerText="PLAY";}
+    else{song.play();playBtn.innerText="PAUSA";}
 }
-
-function saltar(s) {
+function saltar(s){
     song.jump(constrain(song.currentTime()+s,0,song.duration()));
 }
-
-function detener() {
-    song.stop(); bars=[]; score=0;
+function detener(){
+    song.stop();
+    bars=[];
+    totalFrames=0;
+    tunedFrames=0;
 }
-
-function cambiarCancion() {
+function cambiarCancion(){
     detener();
     location.reload();
 }
-
-function clickBarra(e) {
+function clickBarra(e){
     let r=e.target.getBoundingClientRect();
     song.jump((e.clientX-r.left)/r.width*song.duration());
 }
-
-function windowResized() {
-    resizeCanvas(windowWidth, windowHeight);
+function windowResized(){
+    resizeCanvas(windowWidth,windowHeight);
 }
 </script>
 </body>
