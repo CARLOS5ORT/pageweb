@@ -16,7 +16,7 @@ body {
     font-family: 'Segoe UI', sans-serif;
     overflow: hidden;
 }
-.hidden { display:none; }
+.hidden { display: none; }
 
 #setup-panel {
     position: absolute;
@@ -70,9 +70,9 @@ body {
     font-size: 11px;
     cursor: pointer;
 }
-.btn-ctrl:hover { background:#00f2ff; color:#000; }
-.btn-stop { border-color:#ff4444; color:#ff4444; }
-.btn-change { border-color:#ffaa00; color:#ffaa00; }
+.btn-ctrl:hover { background: #00f2ff; color: #000; }
+.btn-stop { border-color: #ff4444; color: #ff4444; }
+.btn-change { border-color: #ffaa00; color: #ffaa00; }
 
 #hud {
     position: absolute;
@@ -93,6 +93,15 @@ body {
     padding: 12px;
     overflow-y: auto;
     font-size: 13px;
+}
+#lyrics-panel h3 {
+    margin: 0 0 8px 0;
+    text-align: center;
+}
+#lyrics-box span {
+    display: block;
+    padding: 4px 6px;
+    color: #aaa;
 }
 </style>
 </head>
@@ -133,26 +142,40 @@ body {
     <div id="score">PUNTOS: 0</div>
 </div>
 
+<div id="lyrics-panel" class="hidden">
+    <h3>LETRA</h3>
+    <div id="lyrics-box"></div>
+</div>
+
 <script>
 let song, mic, pitchUser, fftSong;
 let bars = [];
 let freqUser = 0;
+let score = 0;
 let ready = false;
-
-let words = [];
-let currentWord = 0;
-let lastVoiceTime = 0;
+let lyricsLines = [];
 
 const notes = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 
 function setup() {
     createCanvas(windowWidth, windowHeight);
-    textAlign(CENTER, BOTTOM);
 }
 
-function cargarPalabras(){
-    const text = document.getElementById("lyricsInput").value;
-    words = text.replace(/\n/g," ").split(" ").filter(w=>w.trim()!=="");
+function cargarLetra() {
+    const text = document.getElementById("lyricsInput").value.trim();
+    if (!text) return;
+
+    lyricsLines = text.split("\n").filter(l => l.trim() !== "");
+    const box = document.getElementById("lyrics-box");
+    box.innerHTML = "";
+
+    lyricsLines.forEach(line => {
+        let s = document.createElement("span");
+        s.textContent = line;
+        box.appendChild(s);
+    });
+
+    document.getElementById("lyrics-panel").classList.remove("hidden");
 }
 
 async function iniciarTodo() {
@@ -163,8 +186,7 @@ async function iniciarTodo() {
     document.getElementById('footer-controls').classList.remove('hidden');
     document.getElementById('hud').classList.remove('hidden');
 
-    cargarPalabras();
-
+    cargarLetra();
     await getAudioContext().resume();
 
     song = loadSound(URL.createObjectURL(file), () => {
@@ -187,27 +209,31 @@ function draw() {
     background(5,5,15);
     if (!ready) return;
 
-    pitchUser.getPitch((e,f)=> freqUser = f || 0);
+    drawGrid();
 
-    if(freqUser > 80){
-        if(millis() - lastVoiceTime > 450){
-            currentWord = min(currentWord + 1, words.length - 1);
-            lastVoiceTime = millis();
+    let now = song.currentTime();
+    let fSong = detectPitchSong();
+
+    if (fSong && fSong > 80 && fSong < 1100) {
+        if (bars.length === 0 || now - bars[bars.length-1].time > 0.12) {
+            bars.push({ y: freqToY(fSong), time: now });
         }
     }
 
-    if(freqUser > 0){
-        let y = map(Math.log(freqUser), Math.log(80), Math.log(1100), height-160, 50);
+    pitchUser.getPitch((e,f)=> freqUser = f || 0);
 
-        stroke(0,242,255);
-        strokeWeight(10);
-        line(width/2, y, width/2, y-80);
+    for (let b of bars) {
+        let x = width/2 + (b.time - now) * 400;
+        if (x < 80 || x > width+100) continue;
+        strokeWeight(12);
+        stroke("#ff00ff");
+        line(x, b.y, x+45, b.y);
+    }
 
-        noStroke();
-        fill(255);
-        textSize(22);
-        text(words[currentWord] || "", width/2, y-90);
-
+    if (freqUser > 0) {
+        let y = freqToY(freqUser);
+        fill(0,242,255,150); noStroke(); ellipse(width/2,y,40);
+        fill(255); ellipse(width/2,y,15);
         let midi = round(12*Math.log(freqUser/440)/Math.log(2)+69);
         document.getElementById('note').innerText = notes[midi%12];
     } else {
@@ -217,10 +243,37 @@ function draw() {
     updateUI();
 }
 
+function drawGrid() {
+    for (let i=36;i<84;i++) {
+        let f=440*Math.pow(2,(i-69)/12);
+        let y=freqToY(f);
+        stroke(255,10); line(80,y,width,y);
+        noStroke(); fill(0,242,255,120);
+        text(notes[i%12]+(floor(i/12)-1),25,y);
+    }
+    stroke(0,242,255,40); line(80,0,80,height);
+}
+
+function detectPitchSong() {
+    let w = fftSong.waveform();
+    let best = -1, bestCorr = 0;
+    for (let o=20;o<1000;o++) {
+        let c=0;
+        for (let i=0;i<w.length-o;i++) c+=w[i]*w[i+o];
+        if (c>bestCorr) { bestCorr=c; best=o; }
+    }
+    return best>0 ? getAudioContext().sampleRate/best : null;
+}
+
+function freqToY(f) {
+    return map(Math.log(f), Math.log(80), Math.log(1100), height-160, 50);
+}
+
 function updateUI() {
     let c=song.currentTime(), d=song.duration();
     document.getElementById('progress-bar').style.width = (c/d*100)+"%";
     document.getElementById('time').innerText = floor(c)+" / "+floor(d);
+    document.getElementById('score').innerText = "PUNTOS: "+score;
 }
 
 function togglePlay() {
@@ -233,7 +286,7 @@ function saltar(s) {
 }
 
 function detener() {
-    song.stop(); currentWord=0;
+    song.stop(); bars=[]; score=0;
 }
 
 function cambiarCancion() {
