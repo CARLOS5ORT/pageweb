@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Voice Master Pro - IA Real Time</title>
+<title>Voice Master Pro</title>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/addons/p5.sound.min.js"></script>
@@ -16,7 +16,8 @@ body {
     font-family: 'Segoe UI', sans-serif;
     overflow: hidden;
 }
-.hidden { display: none; }
+
+.hidden { display:none; }
 
 #setup-panel {
     position: absolute;
@@ -24,12 +25,12 @@ body {
     left: 50%;
     transform: translate(-50%, -50%);
     background: rgba(20,20,40,0.95);
-    padding: 40px;
+    padding: 30px;
     border: 2px solid #00f2ff;
     border-radius: 20px;
+    width: 340px;
     text-align: center;
     z-index: 100;
-    width: 340px;
 }
 
 #footer-controls {
@@ -58,50 +59,52 @@ body {
 #controls-row {
     display: flex;
     justify-content: center;
-    gap: 12px;
+    gap: 10px;
 }
 
 .btn-ctrl {
     background: transparent;
     border: 1px solid #00f2ff;
     color: #00f2ff;
-    padding: 8px 18px;
+    padding: 8px 16px;
     border-radius: 20px;
     font-size: 11px;
     cursor: pointer;
 }
-.btn-ctrl:hover { background: #00f2ff; color: #000; }
-.btn-stop { border-color: #ff4444; color: #ff4444; }
-.btn-change { border-color: #ffaa00; color: #ffaa00; }
+.btn-stop { border-color:#ff4444; color:#ff4444; }
+.btn-change { border-color:#ffaa00; color:#ffaa00; }
+.btn-ctrl:hover { background:#00f2ff; color:#000; }
 
 #hud {
     position: absolute;
     top: 20px;
-    right: 20px;
+    right: 360px;
     text-align: right;
 }
 
 #lyrics-panel {
     position: absolute;
-    left: 20px;
-    bottom: 120px;
+    top: 20px;
+    right: 20px;
     width: 320px;
-    max-height: 50%;
+    max-height: 70%;
     background: rgba(0,0,0,0.7);
     border: 1px solid #00f2ff;
-    border-radius: 12px;
+    border-radius: 14px;
     padding: 12px;
     overflow-y: auto;
-    font-size: 13px;
 }
+
 #lyrics-panel h3 {
-    margin: 0 0 8px 0;
+    margin: 0 0 10px 0;
     text-align: center;
+    color: #00f2ff;
 }
+
 #lyrics-box span {
-    display: block;
+    display:block;
     padding: 4px 6px;
-    color: #aaa;
+    color:#aaa;
 }
 </style>
 </head>
@@ -109,16 +112,14 @@ body {
 <body>
 
 <div id="setup-panel">
-    <h1>VOICE MASTER</h1>
-    <p>Análisis de tono en tiempo real</p>
-
+    <h2>VOICE MASTER</h2>
     <input type="file" id="audioFile" accept="audio/*"><br><br>
 
     <textarea id="lyricsInput" placeholder="Pega aquí la letra..."
     style="width:100%;height:120px;background:#000;color:#00f2ff;border:1px solid #00f2ff;border-radius:8px;padding:6px;"></textarea>
     <br><br>
 
-    <button class="btn-ctrl" onclick="iniciarTodo()" style="background:#00f2ff;color:#000">
+    <button class="btn-ctrl" style="background:#00f2ff;color:#000" onclick="iniciarTodo()">
         CARGAR Y ANALIZAR
     </button>
 </div>
@@ -150,54 +151,38 @@ body {
 <script>
 let song, mic, pitchUser, fftSong;
 let bars = [];
+let voiceTrail = [];
 let freqUser = 0;
 let score = 0;
 let ready = false;
-let lyricsLines = [];
 
 const notes = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 
-function setup() {
+function setup(){
     createCanvas(windowWidth, windowHeight);
 }
 
-function cargarLetra() {
-    const text = document.getElementById("lyricsInput").value.trim();
-    if (!text) return;
+async function iniciarTodo(){
+    let file = document.getElementById("audioFile").files[0];
+    if(!file) return;
 
-    lyricsLines = text.split("\n").filter(l => l.trim() !== "");
-    const box = document.getElementById("lyrics-box");
-    box.innerHTML = "";
-
-    lyricsLines.forEach(line => {
-        let s = document.createElement("span");
-        s.textContent = line;
-        box.appendChild(s);
-    });
-
-    document.getElementById("lyrics-panel").classList.remove("hidden");
-}
-
-async function iniciarTodo() {
-    let file = document.getElementById('audioFile').files[0];
-    if (!file) return;
-
-    document.getElementById('setup-panel').classList.add('hidden');
-    document.getElementById('footer-controls').classList.remove('hidden');
-    document.getElementById('hud').classList.remove('hidden');
+    document.getElementById("setup-panel").classList.add("hidden");
+    document.getElementById("footer-controls").classList.remove("hidden");
+    document.getElementById("hud").classList.remove("hidden");
 
     cargarLetra();
+
     await getAudioContext().resume();
 
-    song = loadSound(URL.createObjectURL(file), () => {
-        fftSong = new p5.FFT(0.9, 2048);
+    song = loadSound(URL.createObjectURL(file), ()=>{
+        fftSong = new p5.FFT(0.9,2048);
         fftSong.setInput(song);
 
         mic = new p5.AudioIn();
-        mic.start(() => {
+        mic.start(()=>{
             const modelURL =
             'https://raw.githubusercontent.com/ml5js/ml5-data-and-models/main/models/pitch-detection/crepe/';
-            pitchUser = ml5.pitchDetection(modelURL, getAudioContext(), mic.stream, () => {
+            pitchUser = ml5.pitchDetection(modelURL, getAudioContext(), mic.stream, ()=>{
                 ready = true;
                 song.play();
             });
@@ -205,102 +190,129 @@ async function iniciarTodo() {
     });
 }
 
-function draw() {
+function draw(){
     background(5,5,15);
-    if (!ready) return;
+    if(!ready) return;
 
     drawGrid();
 
     let now = song.currentTime();
     let fSong = detectPitchSong();
 
-    if (fSong && fSong > 80 && fSong < 1100) {
-        if (bars.length === 0 || now - bars[bars.length-1].time > 0.12) {
-            bars.push({ y: freqToY(fSong), time: now });
+    if(fSong && fSong>80 && fSong<1100){
+        if(bars.length===0 || now-bars[bars.length-1].time>0.15){
+            bars.push({ y:freqToY(fSong), time:now, hit:false });
         }
     }
 
-    pitchUser.getPitch((e,f)=> freqUser = f || 0);
+    pitchUser.getPitch((e,f)=>freqUser=f||0);
 
-    for (let b of bars) {
-        let x = width/2 + (b.time - now) * 400;
-        if (x < 80 || x > width+100) continue;
+    if(freqUser>0){
+        voiceTrail.push({ y:freqToY(freqUser), time:now });
+    }
+
+    // ESTELA DE VOZ
+    stroke(0,242,255,180);
+    strokeWeight(8);
+    for(let i=1;i<voiceTrail.length;i++){
+        let x1=width/2+(voiceTrail[i-1].time-now)*300;
+        let x2=width/2+(voiceTrail[i].time-now)*300;
+        if(x1<80||x2>width) continue;
+        line(x1,voiceTrail[i-1].y,x2,voiceTrail[i].y);
+    }
+
+    // BARRAS DE LA CANCIÓN
+    for(let b of bars){
+        let x=width/2+(b.time-now)*300;
+        if(x<80||x>width) continue;
         strokeWeight(12);
         stroke("#ff00ff");
-        line(x, b.y, x+45, b.y);
+        line(x,b.y,x+45,b.y);
     }
 
-    if (freqUser > 0) {
-        let y = freqToY(freqUser);
+    if(freqUser>0){
+        let y=freqToY(freqUser);
         fill(0,242,255,150); noStroke(); ellipse(width/2,y,40);
         fill(255); ellipse(width/2,y,15);
-        let midi = round(12*Math.log(freqUser/440)/Math.log(2)+69);
-        document.getElementById('note').innerText = notes[midi%12];
-    } else {
-        document.getElementById('note').innerText="--";
-    }
+        let midi=Math.round(12*Math.log2(freqUser/440)+69);
+        document.getElementById("note").innerText=notes[midi%12];
+    } else document.getElementById("note").innerText="--";
 
     updateUI();
 }
 
-function drawGrid() {
-    for (let i=36;i<84;i++) {
+function drawGrid(){
+    for(let i=36;i<84;i++){
         let f=440*Math.pow(2,(i-69)/12);
         let y=freqToY(f);
         stroke(255,10); line(80,y,width,y);
         noStroke(); fill(0,242,255,120);
-        text(notes[i%12]+(floor(i/12)-1),25,y);
+        text(notes[i%12]+(Math.floor(i/12)-1),25,y);
     }
     stroke(0,242,255,40); line(80,0,80,height);
 }
 
-function detectPitchSong() {
-    let w = fftSong.waveform();
-    let best = -1, bestCorr = 0;
-    for (let o=20;o<1000;o++) {
+function freqToY(f){
+    return map(Math.log(f),Math.log(80),Math.log(1100),height-160,50);
+}
+
+function detectPitchSong(){
+    let w=fftSong.waveform();
+    let best=-1,bestCorr=0;
+    for(let o=20;o<1000;o++){
         let c=0;
-        for (let i=0;i<w.length-o;i++) c+=w[i]*w[i+o];
-        if (c>bestCorr) { bestCorr=c; best=o; }
+        for(let i=0;i<w.length-o;i++) c+=w[i]*w[i+o];
+        if(c>bestCorr){ bestCorr=c; best=o; }
     }
-    return best>0 ? getAudioContext().sampleRate/best : null;
+    return best>0?getAudioContext().sampleRate/best:null;
 }
 
-function freqToY(f) {
-    return map(Math.log(f), Math.log(80), Math.log(1100), height-160, 50);
-}
-
-function updateUI() {
+function updateUI(){
     let c=song.currentTime(), d=song.duration();
-    document.getElementById('progress-bar').style.width = (c/d*100)+"%";
-    document.getElementById('time').innerText = floor(c)+" / "+floor(d);
-    document.getElementById('score').innerText = "PUNTOS: "+score;
+    document.getElementById("progress-bar").style.width=(c/d*100)+"%";
+    document.getElementById("time").innerText=Math.floor(c)+" / "+Math.floor(d);
 }
 
-function togglePlay() {
-    if (song.isPlaying()) { song.pause(); playBtn.innerText="PLAY"; }
+function togglePlay(){
+    if(song.isPlaying()){ song.pause(); playBtn.innerText="PLAY"; }
     else { song.play(); playBtn.innerText="PAUSA"; }
 }
 
-function saltar(s) {
+function saltar(s){
     song.jump(constrain(song.currentTime()+s,0,song.duration()));
 }
 
-function detener() {
-    song.stop(); bars=[]; score=0;
+function detener(){
+    song.stop();
+    bars=[];
+    voiceTrail=[];
 }
 
-function cambiarCancion() {
+function cambiarCancion(){
     detener();
     location.reload();
 }
 
-function clickBarra(e) {
+function clickBarra(e){
     let r=e.target.getBoundingClientRect();
     song.jump((e.clientX-r.left)/r.width*song.duration());
 }
 
-function windowResized() {
-    resizeCanvas(windowWidth, windowHeight);
+function cargarLetra(){
+    const text=document.getElementById("lyricsInput").value.trim();
+    if(!text) return;
+    const box=document.getElementById("lyrics-box");
+    box.innerHTML="";
+    text.split("\n").forEach(l=>{
+        let s=document.createElement("span");
+        s.textContent=l;
+        box.appendChild(s);
+    });
+    document.getElementById("lyrics-panel").classList.remove("hidden");
+}
+
+function windowResized(){
+    resizeCanvas(windowWidth,windowHeight);
 }
 </script>
 
