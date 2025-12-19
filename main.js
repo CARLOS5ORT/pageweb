@@ -5,6 +5,11 @@ let freqUser = 0;
 let score = 0;
 let ready = false;
 
+// === TONALIDAD ===
+let songNotesCount = {};
+let songKey = "--";
+let keyDetected = false;
+
 const notes = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 
 function setup() {
@@ -31,10 +36,15 @@ async function iniciarTodo() {
         mic.start(() => {
             const modelURL =
             "https://raw.githubusercontent.com/ml5js/ml5-data-and-models/main/models/pitch-detection/crepe/";
-            pitchUser = ml5.pitchDetection(modelURL, getAudioContext(), mic.stream, () => {
-                ready = true;
-                song.play();
-            });
+            pitchUser = ml5.pitchDetection(
+                modelURL,
+                getAudioContext(),
+                mic.stream,
+                () => {
+                    ready = true;
+                    song.play();
+                }
+            );
         });
     });
 }
@@ -48,19 +58,28 @@ function draw() {
     const now = song.currentTime();
     const fSong = detectPitchSong();
 
+    // === BARRAS CANCIÓN + CONTEO TONALIDAD ===
     if (fSong && fSong > 80 && fSong < 1100) {
         if (!bars.length || now - bars[bars.length - 1].time > 0.15) {
             bars.push({ y: freqToY(fSong), time: now });
+
+            let note = freqToNoteName(fSong);
+            songNotesCount[note] = (songNotesCount[note] || 0) + 1;
+
+            if (!keyDetected && song.currentTime() > 8) {
+                detectSongKey();
+            }
         }
     }
 
+    // === PITCH USUARIO ===
     pitchUser.getPitch((e, f) => freqUser = f || 0);
 
     if (freqUser > 0) {
         voiceTrail.push({ y: freqToY(freqUser), time: now });
     }
 
-    // Estela de voz
+    // === ESTELA DE VOZ ===
     stroke(0, 242, 255, 180);
     strokeWeight(8);
     for (let i = 1; i < voiceTrail.length; i++) {
@@ -70,7 +89,7 @@ function draw() {
         line(x1, voiceTrail[i - 1].y, x2, voiceTrail[i].y);
     }
 
-    // Barras canción
+    // === BARRAS MAGENTA (CANCIÓN) ===
     stroke("#ff00ff");
     strokeWeight(12);
     for (let b of bars) {
@@ -79,6 +98,7 @@ function draw() {
         line(x, b.y, x + 45, b.y);
     }
 
+    // === INDICADOR CENTRAL + NOTA ===
     if (freqUser > 0) {
         let y = freqToY(freqUser);
         fill(0, 242, 255, 150);
@@ -88,12 +108,35 @@ function draw() {
         ellipse(width / 2, y, 15);
 
         let midi = Math.round(12 * Math.log2(freqUser / 440) + 69);
-        document.getElementById("note").innerText = notes[midi % 12];
+        document.getElementById("note").innerText =
+            notes[midi % 12] + (keyDetected ? " | KEY: " + songKey : "");
     } else {
         document.getElementById("note").innerText = "--";
     }
 
     updateUI();
+}
+
+// ==================== FUNCIONES ====================
+
+function freqToNoteName(freq) {
+    let midi = Math.round(12 * Math.log2(freq / 440) + 69);
+    return notes[midi % 12];
+}
+
+function detectSongKey() {
+    let max = 0;
+    let key = "--";
+
+    for (let n in songNotesCount) {
+        if (songNotesCount[n] > max) {
+            max = songNotesCount[n];
+            key = n;
+        }
+    }
+
+    songKey = key;
+    keyDetected = true;
 }
 
 function drawGrid() {
@@ -117,18 +160,24 @@ function freqToY(f) {
 function detectPitchSong() {
     let w = fftSong.waveform();
     let best = -1, bestCorr = 0;
+
     for (let o = 20; o < 1000; o++) {
         let c = 0;
         for (let i = 0; i < w.length - o; i++) c += w[i] * w[i + o];
-        if (c > bestCorr) { bestCorr = c; best = o; }
+        if (c > bestCorr) {
+            bestCorr = c;
+            best = o;
+        }
     }
     return best > 0 ? getAudioContext().sampleRate / best : null;
 }
 
 function updateUI() {
-    let c = song.currentTime(), d = song.duration();
+    let c = song.currentTime();
+    let d = song.duration();
     document.getElementById("progress-bar").style.width = (c / d * 100) + "%";
-    document.getElementById("time").innerText = Math.floor(c) + " / " + Math.floor(d);
+    document.getElementById("time").innerText =
+        Math.floor(c) + " / " + Math.floor(d);
 }
 
 function togglePlay() {
@@ -149,6 +198,9 @@ function detener() {
     song.stop();
     bars = [];
     voiceTrail = [];
+    songNotesCount = {};
+    keyDetected = false;
+    songKey = "--";
 }
 
 function cambiarCancion() {
