@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Voice Master Pro - IA Real Time</title>
+    <title>Voice Master Pro - Solo Barras</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/addons/p5.sound.min.js"></script>
     <script src="https://unpkg.com/ml5@0.12.2/dist/ml5.min.js"></script>
@@ -76,9 +76,7 @@
                 mic.start(() => {
                     const modelURL = 'https://raw.githubusercontent.com/ml5js/ml5-data-and-models/main/models/pitch-detection/crepe/';
                     
-                    // Iniciar IA para Usuario
                     pitchUser = ml5.pitchDetection(modelURL, audioCtx, mic.stream, () => {
-                        // Iniciar IA para la Canción (Análisis de tono real)
                         pitchSong = ml5.pitchDetection(modelURL, audioCtx, song.bufferSource, () => {
                             isReady = true;
                             song.play();
@@ -92,11 +90,9 @@
         function loopDeteccionIA() {
             if (!isReady) return;
 
-            // Analizar el tono real del MP3 para crear las barras magenta
             if (song.isPlaying()) {
                 pitchSong.getPitch((err, f) => {
                     if (f && f > 50) {
-                        // Solo crear barra si hay suficiente espacio de tiempo para evitar "manchas"
                         if (bars.length === 0 || song.currentTime() - bars[bars.length-1].time > 0.15) {
                             bars.push({ 
                                 y: freqToY(f), 
@@ -108,7 +104,6 @@
                 });
             }
 
-            // Analizar el tono del usuario
             pitchUser.getPitch((err, fU) => {
                 freqUser = fU || 0;
             });
@@ -121,22 +116,17 @@
             background(5, 5, 15);
             if (!isReady) return;
 
-            // Dibujar la parrilla de notas (fondo)
-            drawGrid();
-
             let now = song.currentTime();
             
-            // Dibujar las barras magenta generadas por la IA
             for (let i = bars.length - 1; i >= 0; i--) {
                 let b = bars[i];
-                let x = width/2 + (b.time - now) * 400; // 400 es la velocidad visual
+                let x = width/2 + (b.time - now) * 400;
 
-                if (x > 80 && x < width + 200) {
+                if (x > -100 && x < width + 200) {
                     strokeWeight(12);
                     stroke(b.hit ? "#00ff96" : "rgba(255, 0, 255, 0.8)");
-                    line(x, b.y, x + 45, b.y); // Barras rectangulares originales
+                    line(x, b.y, x + 45, b.y);
 
-                    // Colisión en el centro de la pantalla
                     if (Math.abs(x - width/2) < 20 && freqUser > 0) {
                         if (Math.abs(freqToY(freqUser) - b.y) < 35) {
                             if (!b.hit) { b.hit = true; score += 10; }
@@ -145,7 +135,6 @@
                 }
             }
 
-            // Indicador de voz (Punto Cian)
             if (freqUser > 0) {
                 let y = freqToY(freqUser);
                 fill(0, 242, 255, 150); noStroke(); ellipse(width/2, y, 40, 40);
@@ -155,22 +144,6 @@
             } else { document.getElementById('noteName').innerText = "--"; }
             
             updateUI();
-        }
-
-        function drawGrid() {
-            textAlign(LEFT, CENTER); textSize(12);
-            for (let i = 36; i < 84; i++) {
-                let f = 440 * Math.pow(2, (i - 69) / 12);
-                let y = freqToY(f);
-                if (y > 0 && y < height) {
-                    stroke(255, 10); line(80, y, width, y);
-                    noStroke();
-                    let n = noteList[i % 12];
-                    if (n.length === 1) { fill(0, 242, 255, 180); text(n + (Math.floor(i/12)-1), 25, y); }
-                    else { fill(255, 30); text(n + (Math.floor(i/12)-1), 25, y); }
-                }
-            }
-            stroke(0, 242, 255, 30); line(80, 0, 80, height);
         }
 
         function updateUI() {
@@ -201,7 +174,6 @@
         }
 
         function saltar(s) { song.jump(constrain(song.currentTime()+s, 0, song.duration())); }
-        
         function manejarClickBarra(e) {
             let rect = document.getElementById('progress-container').getBoundingClientRect();
             song.jump(((e.clientX - rect.left) / rect.width) * song.duration());
