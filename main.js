@@ -218,32 +218,3 @@ function windowResized() {
     resizeCanvas(windowWidth, windowHeight);
 }
 
-function cargarYoutube() {
-    const url = document.getElementById("youtubeUrl").value.trim();
-    if (!url) return;
-
-    let videoId = "";
-
-    if (url.includes("youtu.be/")) {
-        videoId = url.split("youtu.be/")[1];
-    } else if (url.includes("watch?v=")) {
-        videoId = url.split("watch?v=")[1].split("&")[0];
-    }
-
-    if (!videoId) {
-        alert("URL de YouTube no válida");
-        return;
-    }
-
-    const container = document.getElementById("youtube-container");
-    container.innerHTML = `
-        <iframe
-            src="https://www.youtube.com/embed/${videoId}"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowfullscreen>
-        </iframe>
-    `;
-
-    document.getElementById("youtube-panel").classList.remove("hidden");
-}
-
