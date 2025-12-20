@@ -8,9 +8,7 @@ body {
 
 .hidden { display: none; }
 
-/* =======================
-   SETUP
-======================= */
+/* SETUP */
 #setup-panel {
     position: absolute;
     top: 50%;
@@ -33,13 +31,9 @@ body {
     border: 1px solid #00f2ff;
     border-radius: 8px;
     padding: 6px;
-    font-family: inherit;
-    resize: none;
 }
 
-/* =======================
-   CONTROLES
-======================= */
+/* CONTROLES */
 #footer-controls {
     position: absolute;
     bottom: 0;
@@ -68,7 +62,6 @@ body {
     display: flex;
     justify-content: center;
     gap: 10px;
-    flex-wrap: wrap;
 }
 
 .btn-ctrl {
@@ -79,7 +72,6 @@ body {
     border-radius: 20px;
     font-size: 11px;
     cursor: pointer;
-    transition: all 0.2s ease;
 }
 
 .btn-ctrl:hover {
@@ -87,30 +79,16 @@ body {
     color: #000;
 }
 
-.btn-stop {
-    border-color: #ff4444;
-    color: #ff4444;
-}
+.btn-stop { border-color:#ff4444; color:#ff4444; }
+.btn-change { border-color:#ffaa00; color:#ffaa00; }
+.btn-main { background:#00f2ff; color:#000; }
 
-.btn-change {
-    border-color: #ffaa00;
-    color: #ffaa00;
-}
-
-.btn-main {
-    background: #00f2ff;
-    color: #000;
-}
-
-/* =======================
-   HUD
-======================= */
+/* HUD */
 #hud {
     position: absolute;
     top: 20px;
     right: 360px;
     text-align: right;
-    line-height: 1.4;
 }
 
 #note {
@@ -118,15 +96,7 @@ body {
     color: #ff00ff;
 }
 
-#score {
-    font-size: 13px;
-    color: #aaa;
-    white-space: pre-line;
-}
-
-/* =======================
-   LETRA
-======================= */
+/* LETRA */
 #lyrics-panel {
     position: absolute;
     top: 20px;
@@ -143,46 +113,10 @@ body {
 #lyrics-panel h3 {
     text-align: center;
     margin: 0 0 10px 0;
-    color: #00f2ff;
 }
 
-/* Línea normal */
 #lyrics-box span {
     display: block;
     padding: 4px 6px;
-    color: #888;
-    font-size: 14px;
+    color: #aaa;
 }
-
-/* Línea activa (preparado para sincronización) */
-#lyrics-box span.active {
-    color: #00f2ff;
-    background: rgba(0,242,255,0.12);
-    border-radius: 6px;
-    font-weight: bold;
-}
-#note {
-    line-height: 1.1;
-}
-
-#note::after {
-    content: "";
-}
-#lyrics-box span {
-    font-size: 14px;
-    line-height: 1.4;
-}
-#key-panel {
-    position: absolute;
-    bottom: 90px;
-    right: 20px;
-    background: rgba(0,0,0,0.75);
-    border: 1px solid #00f2ff;
-    border-radius: 12px;
-    padding: 10px 16px;
-    font-size: 14px;
-    color: #00f2ff;
-    font-family: monospace;
-}
-
-
