@@ -66,7 +66,14 @@ function draw() {
     if (fSong && fSong > 80 && fSong < 1100) {
         if (!bars.length || now - bars[bars.length - 1].time > 0.15) {
             bars.push({ y: freqToY(fSong), time: now });
-        }
+
+let note = freqToNoteName(fSong);
+songNotesCount[note] = (songNotesCount[note] || 0) + 1;
+
+if (!keyDetected && now > 8) {
+    detectSongKey();
+}
+
     }
 
     // ================= PITCH VOZ =================
@@ -217,3 +224,28 @@ function cargarLetra() {
 function windowResized() {
     resizeCanvas(windowWidth, windowHeight);
 }
+
+    function freqToNoteName(freq) {
+    let midi = Math.round(12 * Math.log2(freq / 440) + 69);
+    return notes[midi % 12];
+}
+
+function detectSongKey() {
+    let max = 0;
+    let key = "--";
+
+    for (let n in songNotesCount) {
+        if (songNotesCount[n] > max) {
+            max = songNotesCount[n];
+            key = n;
+        }
+    }
+
+    songKey = key;
+    keyDetected = true;
+
+    const panel = document.getElementById("key-panel");
+    panel.innerText = "TONALIDAD: " + songKey + " MAYOR";
+    panel.classList.remove("hidden");
+}
+
