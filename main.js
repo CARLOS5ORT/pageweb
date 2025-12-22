@@ -1,3 +1,6 @@
+// ===============================
+// VARIABLES GLOBALES
+// ===============================
 let song, mic, pitchUser, fftSong;
 let bars = [];
 let voiceTrail = [];
@@ -7,27 +10,38 @@ let ready = false;
 const TIME_SCALE = 300;
 const notes = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 
-// ===============================
-// CLAVE / TONALIDAD GLOBAL
-// ===============================
+// -------- CLAVE GLOBAL --------
+let songKey = "Analizando...";
 let keyEnergy = new Array(12).fill(0);
-let analyzingKey = true;
-let songKey = "--";
 
+// Perfiles Krumhansl
 const MAJOR_PROFILE = [6.35,2.23,3.48,2.33,4.38,4.09,2.52,5.19,2.39,3.66,2.29,2.88];
 const MINOR_PROFILE = [6.33,2.68,3.52,5.38,2.60,3.53,2.54,4.75,3.98,2.69,3.34,3.17];
 
+// ===============================
+// SETUP
+// ===============================
 function setup() {
     createCanvas(windowWidth, windowHeight);
 }
 
+// ===============================
+// INICIO GENERAL
+// ===============================
 async function iniciarTodo() {
     const file = document.getElementById("audioFile").files[0];
     if (!file) return;
 
     document.getElementById("setup-panel").classList.add("hidden");
-    document.getElementById("footer-controls").classList.remove("hidden");
+
+    // 1️⃣ ANALISIS OFFLINE DE TODA LA CANCIÓN
+    songKey = "Analizando...";
     document.getElementById("hud").classList.remove("hidden");
+
+    await analyzeSongKeyOffline(file);
+
+    // 2️⃣ INICIAR SISTEMA NORMAL
+    document.getElementById("footer-controls").classList.remove("hidden");
 
     cargarLetra();
     await getAudioContext().resume();
@@ -39,44 +53,116 @@ async function iniciarTodo() {
         mic = new p5.AudioIn();
         mic.start(() => {
             const modelURL =
-            "https://raw.githubusercontent.com/ml5js/ml5-data-and-models/main/models/pitch-detection/crepe/";
-            pitchUser = ml5.pitchDetection(
-                modelURL,
-                getAudioContext(),
-                mic.stream,
-                () => {
-                    ready = true;
-                    song.play();
-
-                    // ⏱️ analizar tonalidad SOLO los primeros 8 segundos
-                    setTimeout(finalizeSongKey, 8000);
-                }
-            );
+              "https://raw.githubusercontent.com/ml5js/ml5-data-and-models/main/models/pitch-detection/crepe/";
+            pitchUser = ml5.pitchDetection(modelURL, getAudioContext(), mic.stream, () => {
+                ready = true;
+                song.play();
+            });
         });
     });
 }
 
+// ===============================
+// ANALISIS OFFLINE DE CLAVE
+// ===============================
+async function analyzeSongKeyOffline(file) {
+    const arrayBuffer = await file.arrayBuffer();
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+
+    const channelData = audioBuffer.getChannelData(0);
+    const sampleRate = audioBuffer.sampleRate;
+    const windowSize = 4096;
+    const step = 2048;
+
+    for (let i = 0; i < channelData.length - windowSize; i += step) {
+        let slice = channelData.slice(i, i + windowSize);
+        analyzeWindow(slice, sampleRate);
+    }
+
+    songKey = detectKeyFromEnergy(keyEnergy);
+}
+
+// FFT SIMPLE PARA ANALISIS OFFLINE
+function analyzeWindow(buffer, sampleRate) {
+    let N = buffer.length;
+
+    for (let k = 0; k < N / 2; k++) {
+        let re = 0, im = 0;
+        for (let n = 0; n < N; n++) {
+            let angle = (2 * Math.PI * k * n) / N;
+            re += buffer[n] * Math.cos(angle);
+            im -= buffer[n] * Math.sin(angle);
+        }
+
+        let mag = Math.sqrt(re * re + im * im);
+        if (mag < 0.01) continue;
+
+        let freq = (k * sampleRate) / N;
+        if (freq < 80 || freq > 2000) continue;
+
+        let midi = Math.round(12 * Math.log2(freq / 440) + 69);
+        let note = ((midi % 12) + 12) % 12;
+        keyEnergy[note] += mag;
+    }
+}
+
+// ===============================
+// DETECTAR CLAVE FINAL
+// ===============================
+function detectKeyFromEnergy(energy) {
+    let bestScore = -Infinity;
+    let bestKey = "--";
+
+    for (let i = 0; i < 12; i++) {
+        let major = 0;
+        let minor = 0;
+
+        for (let j = 0; j < 12; j++) {
+            major += energy[(j + i) % 12] * MAJOR_PROFILE[j];
+            minor += energy[(j + i) % 12] * MINOR_PROFILE[j];
+        }
+
+        if (major > bestScore) {
+            bestScore = major;
+            bestKey = notes[i] + " mayor";
+        }
+        if (minor > bestScore) {
+            bestScore = minor;
+            bestKey = notes[i] + " menor";
+        }
+    }
+
+    return bestKey;
+}
+
+// ===============================
+// DRAW
+// ===============================
 function draw() {
     background(5,5,15);
-    if (!ready) return;
+
+    // LINEA CENTRAL
+    stroke(0,242,255,160);
+    strokeWeight(2);
+    line(width/2, 0, width/2, height);
+
+    if (!ready) {
+        drawHUD();
+        return;
+    }
 
     drawGrid();
 
     let now = song.currentTime();
     let fSong = detectPitchSong();
 
-    // ===============================
-    // BARRAS DE LA CANCIÓN
-    // ===============================
     if (fSong && fSong > 80 && fSong < 1100) {
         if (!bars.length || now - bars[bars.length-1].time > 0.15) {
             bars.push({ y: freqToY(fSong), time: now });
         }
     }
 
-    // ===============================
-    // VOZ DEL USUARIO
-    // ===============================
     pitchUser.getPitch((e,f)=> freqUser = f || 0);
 
     if (freqUser > 0) {
@@ -100,106 +186,45 @@ function draw() {
         line(x, b.y, x+45, b.y);
     }
 
-    // ===============================
-    // NOTA ACTUAL DEL USUARIO
-    // ===============================
     if (freqUser>0) {
         let y=freqToY(freqUser);
-        fill(0,242,255,150); 
-        noStroke();
+        fill(0,242,255,150); noStroke();
         ellipse(width/2,y,40);
-        fill(255); 
-        ellipse(width/2,y,15);
+        fill(255); ellipse(width/2,y,15);
 
         let midi=Math.round(12*Math.log2(freqUser/440)+69);
-        document.getElementById("note").innerText = notes[midi%12];
+        document.getElementById("note").innerText=notes[midi%12];
     } else {
-        document.getElementById("note").innerText = "--";
+        document.getElementById("note").innerText="--";
     }
 
-    // ===============================
-    // ANALISIS DE CLAVE (ACUMULADO)
-    // ===============================
-    accumulateKeyEnergy();
-
-    // mostrar tonalidad fija
-    document.getElementById("key").innerText = songKey;
-
-    // ===============================
-    // LINEA CENTRAL
-    // ===============================
-    stroke(0,242,255,160);
-    strokeWeight(2);
-    line(width/2, 0, width/2, height);
-
+    drawHUD();
     updateUI();
 }
 
 // ===============================
-// FUNCIONES DE CLAVE
+// HUD
 // ===============================
-function accumulateKeyEnergy() {
-    if (!analyzingKey) return;
-
-    let spectrum = fftSong.analyze();
-    let nyquist = getAudioContext().sampleRate / 2;
-
-    for (let i = 0; i < spectrum.length; i++) {
-        let amp = spectrum[i];
-        if (amp < 5) continue;
-
-        let freq = (i / spectrum.length) * nyquist;
-        if (freq < 80 || freq > 2000) continue;
-
-        let midi = Math.round(12 * Math.log2(freq / 440) + 69);
-        let note = ((midi % 12) + 12) % 12;
-
-        keyEnergy[note] += amp;
-    }
-}
-
-function finalizeSongKey() {
-    songKey = detectKeyFromEnergy(keyEnergy);
-    analyzingKey = false;
-}
-
-function detectKeyFromEnergy(energy) {
-    let bestScore = -Infinity;
-    let bestKey = "--";
-
-    for (let i = 0; i < 12; i++) {
-        let major = 0, minor = 0;
-        for (let j = 0; j < 12; j++) {
-            major += energy[(j+i)%12] * MAJOR_PROFILE[j];
-            minor += energy[(j+i)%12] * MINOR_PROFILE[j];
-        }
-        if (major > bestScore) {
-            bestScore = major;
-            bestKey = notes[i] + " mayor";
-        }
-        if (minor > bestScore) {
-            bestScore = minor;
-            bestKey = notes[i] + " menor";
-        }
-    }
-    return bestKey;
+function drawHUD() {
+    noStroke();
+    fill(255);
+    textAlign(LEFT, TOP);
+    textSize(16);
+    text("Clave: " + songKey, 20, 20);
 }
 
 // ===============================
-// UTILIDADES
+// RESTO (IGUAL A TU PROYECTO)
 // ===============================
 function drawGrid() {
     for (let i=36;i<84;i++) {
         let f=440*Math.pow(2,(i-69)/12);
         let y=freqToY(f);
-        stroke(255,10); 
-        line(80,y,width,y);
-        noStroke(); 
-        fill(0,242,255,120);
+        stroke(255,10); line(80,y,width,y);
+        noStroke(); fill(0,242,255,120);
         text(notes[i%12]+(Math.floor(i/12)-1),25,y);
     }
-    stroke(0,242,255,40); 
-    line(80,0,80,height);
+    stroke(0,242,255,40); line(80,0,80,height);
 }
 
 function freqToY(f) {
@@ -224,30 +249,13 @@ function updateUI() {
 }
 
 function togglePlay() {
-    if (song.isPlaying()){
-        song.pause();
-        playBtn.innerText="PLAY";
-    } else {
-        song.play();
-        playBtn.innerText="PAUSA";
-    }
+    if (song.isPlaying()){song.pause();playBtn.innerText="PLAY";}
+    else{song.play();playBtn.innerText="PAUSA";}
 }
 
-function saltar(s){
-    song.jump(constrain(song.currentTime()+s,0,song.duration()));
-}
-
-function detener(){
-    song.stop();
-    bars=[];
-    voiceTrail=[];
-}
-
-function cambiarCancion(){
-    detener();
-    location.reload();
-}
-
+function saltar(s){song.jump(constrain(song.currentTime()+s,0,song.duration()));}
+function detener(){song.stop();bars=[];voiceTrail=[];}
+function cambiarCancion(){detener();location.reload();}
 function clickBarra(e){
     let r=e.target.getBoundingClientRect();
     song.jump((e.clientX-r.left)/r.width*song.duration());
@@ -266,6 +274,4 @@ function cargarLetra(){
     document.getElementById("lyrics-panel").classList.remove("hidden");
 }
 
-function windowResized(){
-    resizeCanvas(windowWidth,windowHeight);
-}
+function windowResized(){resizeCanvas(windowWidth,windowHeight);}
