@@ -50,11 +50,6 @@ async function iniciarTodo() {
 
 function draw() {
     background(5,5,15);
-    // ---- LINEA CENTRAL VERTICAL ----
-stroke(0, 242, 255, 120);
-strokeWeight(2);
-line(width / 2, 0, width / 2, height);
-
     if (!ready) return;
 
     drawGrid();
@@ -62,9 +57,7 @@ line(width / 2, 0, width / 2, height);
     let now = song.currentTime();
     let fSong = detectPitchSong();
 
-    // ===============================
-    // BARRAS DE LA CANCIÓN
-    // ===============================
+    // ---- BARRAS DE LA CANCIÓN ----
     if (fSong && fSong > 80 && fSong < 1100) {
         if (!bars.length || now - bars[bars.length-1].time > 0.15) {
             bars.push({ y: freqToY(fSong), time: now });
@@ -94,9 +87,7 @@ line(width / 2, 0, width / 2, height);
         line(x, b.y, x+45, b.y);
     }
 
-    // ===============================
-    // NOTA DEL USUARIO
-    // ===============================
+    // ---- NOTA DEL USUARIO ----
     if (freqUser>0) {
         let y=freqToY(freqUser);
         fill(0,242,255,150); noStroke();
@@ -110,32 +101,22 @@ line(width / 2, 0, width / 2, height);
     }
 
     // ===============================
-    // ANALISIS DE CLAVE (CANCIÓN)
+    // ANALISIS DE CLAVE (CORRECTO)
     // ===============================
-   // ---- ANALISIS DE CLAVE (CORRECTO) ----
-let spectrum = fftSong.analyze();
-let nyquist = getAudioContext().sampleRate / 2;
+    let spectrum = fftSong.analyze();
+    let nyquist = getAudioContext().sampleRate / 2;
 
-for (let i = 0; i < spectrum.length; i++) {
-    let amp = spectrum[i];
-    if (amp < 5) continue;
+    for (let i = 0; i < spectrum.length; i++) {
+        let amp = spectrum[i];
+        if (amp < 5) continue;
 
-    let freq = (i / spectrum.length) * nyquist;
-    if (freq < 80 || freq > 2000) continue;
-
-    let midi = Math.round(12 * Math.log2(freq / 440) + 69);
-    let note = ((midi % 12) + 12) % 12;
-
-    keyEnergy[note] += amp;
-}
-
+        let freq = (i / spectrum.length) * nyquist;
         if (freq < 80 || freq > 2000) continue;
 
         let midi = Math.round(12 * Math.log2(freq / 440) + 69);
-        let note = midi % 12;
-        if (note < 0) note += 12;
+        let note = ((midi % 12) + 12) % 12;
 
-        keyEnergy[note] += spectrum[i];
+        keyEnergy[note] += amp;
     }
 
     if (millis() - lastKeyUpdate > 3000) {
@@ -144,14 +125,17 @@ for (let i = 0; i < spectrum.length; i++) {
         lastKeyUpdate = millis();
     }
 
-    // ===============================
-    // MOSTRAR CLAVE (ABAJO DERECHA)
-    // ===============================
+    // ---- TEXTO CLAVE ----
     noStroke();
     fill(255);
     textAlign(RIGHT, BOTTOM);
     textSize(16);
     text("Clave: " + detectedKey, width - 20, height - 20);
+
+    // ---- LINEA CENTRAL (AL FINAL PARA QUE SE VEA) ----
+    stroke(0,242,255,160);
+    strokeWeight(2);
+    line(width/2, 0, width/2, height);
 
     updateUI();
 }
