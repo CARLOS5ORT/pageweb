@@ -50,6 +50,11 @@ async function iniciarTodo() {
 
 function draw() {
     background(5,5,15);
+    // ---- LINEA CENTRAL VERTICAL ----
+stroke(0, 242, 255, 120);
+strokeWeight(2);
+line(width / 2, 0, width / 2, height);
+
     if (!ready) return;
 
     drawGrid();
@@ -107,9 +112,23 @@ function draw() {
     // ===============================
     // ANALISIS DE CLAVE (CANCIÓN)
     // ===============================
-    let spectrum = fftSong.analyze();
-    for (let i = 0; i < spectrum.length; i++) {
-        let freq = fftSong.getFreq(i);
+   // ---- ANALISIS DE CLAVE (CORRECTO) ----
+let spectrum = fftSong.analyze();
+let nyquist = getAudioContext().sampleRate / 2;
+
+for (let i = 0; i < spectrum.length; i++) {
+    let amp = spectrum[i];
+    if (amp < 5) continue;
+
+    let freq = (i / spectrum.length) * nyquist;
+    if (freq < 80 || freq > 2000) continue;
+
+    let midi = Math.round(12 * Math.log2(freq / 440) + 69);
+    let note = ((midi % 12) + 12) % 12;
+
+    keyEnergy[note] += amp;
+}
+
         if (freq < 80 || freq > 2000) continue;
 
         let midi = Math.round(12 * Math.log2(freq / 440) + 69);
