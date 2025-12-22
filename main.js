@@ -8,24 +8,17 @@ const TIME_SCALE = 300;
 const notes = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 
 // ===============================
-// TONALIDAD GLOBAL (UNA SOLA VEZ)
+// CLAVE / TONALIDAD GLOBAL
 // ===============================
 let keyEnergy = new Array(12).fill(0);
+let analyzingKey = true;
 let songKey = "--";
-let globalKeyDetected = false;
 
 const MAJOR_PROFILE = [6.35,2.23,3.48,2.33,4.38,4.09,2.52,5.19,2.39,3.66,2.29,2.88];
 const MINOR_PROFILE = [6.33,2.68,3.52,5.38,2.60,3.53,2.54,4.75,3.98,2.69,3.34,3.17];
 
 function setup() {
     createCanvas(windowWidth, windowHeight);
-
-    // FORZAR HUD ARRIBA A LA IZQUIERDA
-    const hud = document.getElementById("hud");
-    hud.style.left = "20px";
-    hud.style.right = "auto";
-    hud.style.top = "20px";
-    hud.style.textAlign = "left";
 }
 
 async function iniciarTodo() {
@@ -55,8 +48,8 @@ async function iniciarTodo() {
                     ready = true;
                     song.play();
 
-                    // ⏱️ ANALIZAR TONALIDAD GLOBAL (UNA SOLA VEZ)
-                    setTimeout(analyzeSongKeyOnce, 2500);
+                    // ⏱️ analizar tonalidad SOLO los primeros 8 segundos
+                    setTimeout(finalizeSongKey, 8000);
                 }
             );
         });
@@ -69,63 +62,84 @@ function draw() {
 
     drawGrid();
 
-    // LINEA CENTRAL
-    stroke(0,242,255,160);
-    strokeWeight(2);
-    line(width/2, 0, width/2, height);
-
     let now = song.currentTime();
     let fSong = detectPitchSong();
 
+    // ===============================
     // BARRAS DE LA CANCIÓN
+    // ===============================
     if (fSong && fSong > 80 && fSong < 1100) {
         if (!bars.length || now - bars[bars.length-1].time > 0.15) {
             bars.push({ y: freqToY(fSong), time: now });
         }
     }
 
+    // ===============================
+    // VOZ DEL USUARIO
+    // ===============================
     pitchUser.getPitch((e,f)=> freqUser = f || 0);
 
     if (freqUser > 0) {
         voiceTrail.push({ y: freqToY(freqUser), time: now });
     }
 
-    // TRAZO VOZ
     stroke(0,242,255,180);
     strokeWeight(8);
     for (let i=1;i<voiceTrail.length;i++) {
         let x1 = width/2 + (voiceTrail[i-1].time - now) * TIME_SCALE;
         let x2 = width/2 + (voiceTrail[i].time - now) * TIME_SCALE;
+        if (x1<80||x2>width) continue;
         line(x1, voiceTrail[i-1].y, x2, voiceTrail[i].y);
     }
 
-    // BARRAS NOTAS CANCIÓN
     stroke("#ff00ff");
     strokeWeight(12);
     for (let b of bars) {
         let x = width/2 + (b.time - now) * TIME_SCALE;
+        if (x<80||x>width) continue;
         line(x, b.y, x+45, b.y);
     }
 
-    // NOTA USUARIO
-    if (freqUser > 0) {
-        let midi = Math.round(12*Math.log2(freqUser/440)+69);
-        document.getElementById("note").innerText = notes[midi % 12];
+    // ===============================
+    // NOTA ACTUAL DEL USUARIO
+    // ===============================
+    if (freqUser>0) {
+        let y=freqToY(freqUser);
+        fill(0,242,255,150); 
+        noStroke();
+        ellipse(width/2,y,40);
+        fill(255); 
+        ellipse(width/2,y,15);
+
+        let midi=Math.round(12*Math.log2(freqUser/440)+69);
+        document.getElementById("note").innerText = notes[midi%12];
     } else {
         document.getElementById("note").innerText = "--";
     }
 
-    // MOSTRAR TONALIDAD GLOBAL
+    // ===============================
+    // ANALISIS DE CLAVE (ACUMULADO)
+    // ===============================
+    accumulateKeyEnergy();
+
+    // mostrar tonalidad fija
     document.getElementById("key").innerText = songKey;
+
+    // ===============================
+    // LINEA CENTRAL
+    // ===============================
+    stroke(0,242,255,160);
+    strokeWeight(2);
+    line(width/2, 0, width/2, height);
 
     updateUI();
 }
 
 // ===============================
-// ANALISIS DE TONALIDAD GLOBAL
+// FUNCIONES DE CLAVE
 // ===============================
-function analyzeSongKeyOnce() {
-    if (globalKeyDetected) return;
+function accumulateKeyEnergy() {
+    if (!analyzingKey) return;
 
     let spectrum = fftSong.analyze();
     let nyquist = getAudioContext().sampleRate / 2;
@@ -142,14 +156,13 @@ function analyzeSongKeyOnce() {
 
         keyEnergy[note] += amp;
     }
-
-    songKey = detectKeyFromEnergy(keyEnergy);
-    globalKeyDetected = true;
 }
 
-// ===============================
-// DETECTOR DE CLAVE
-// ===============================
+function finalizeSongKey() {
+    songKey = detectKeyFromEnergy(keyEnergy);
+    analyzingKey = false;
+}
+
 function detectKeyFromEnergy(energy) {
     let bestScore = -Infinity;
     let bestKey = "--";
@@ -179,11 +192,14 @@ function drawGrid() {
     for (let i=36;i<84;i++) {
         let f=440*Math.pow(2,(i-69)/12);
         let y=freqToY(f);
-        stroke(255,10); line(80,y,width,y);
-        noStroke(); fill(0,242,255,120);
+        stroke(255,10); 
+        line(80,y,width,y);
+        noStroke(); 
+        fill(0,242,255,120);
         text(notes[i%12]+(Math.floor(i/12)-1),25,y);
     }
-    stroke(0,242,255,40); line(80,0,80,height);
+    stroke(0,242,255,40); 
+    line(80,0,80,height);
 }
 
 function freqToY(f) {
@@ -208,13 +224,29 @@ function updateUI() {
 }
 
 function togglePlay() {
-    if (song.isPlaying()){song.pause();playBtn.innerText="PLAY";}
-    else{song.play();playBtn.innerText="PAUSA";}
+    if (song.isPlaying()){
+        song.pause();
+        playBtn.innerText="PLAY";
+    } else {
+        song.play();
+        playBtn.innerText="PAUSA";
+    }
 }
 
-function saltar(s){song.jump(constrain(song.currentTime()+s,0,song.duration()));}
-function detener(){song.stop();bars=[];voiceTrail=[];}
-function cambiarCancion(){detener();location.reload();}
+function saltar(s){
+    song.jump(constrain(song.currentTime()+s,0,song.duration()));
+}
+
+function detener(){
+    song.stop();
+    bars=[];
+    voiceTrail=[];
+}
+
+function cambiarCancion(){
+    detener();
+    location.reload();
+}
 
 function clickBarra(e){
     let r=e.target.getBoundingClientRect();
@@ -234,4 +266,6 @@ function cargarLetra(){
     document.getElementById("lyrics-panel").classList.remove("hidden");
 }
 
-function windowResized(){resizeCanvas(windowWidth,windowHeight);}
+function windowResized(){
+    resizeCanvas(windowWidth,windowHeight);
+}
