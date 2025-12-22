@@ -1,6 +1,3 @@
-// ===============================
-// VARIABLES GLOBALES
-// ===============================
 let song, mic, pitchUser, fftSong;
 let bars = [];
 let voiceTrail = [];
@@ -10,159 +7,129 @@ let ready = false;
 const TIME_SCALE = 300;
 const notes = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 
-// -------- CLAVE GLOBAL --------
-let songKey = "Analizando...";
-let keyEnergy = new Array(12).fill(0);
+// ===============================
+// CLAVE FINAL (FIJA)
+// ===============================
+let finalKey = "Analizando...";
+let keyDetected = false;
 
-// Perfiles Krumhansl
+// Perfiles Krumhansl (estándar)
 const MAJOR_PROFILE = [6.35,2.23,3.48,2.33,4.38,4.09,2.52,5.19,2.39,3.66,2.29,2.88];
 const MINOR_PROFILE = [6.33,2.68,3.52,5.38,2.60,3.53,2.54,4.75,3.98,2.69,3.34,3.17];
 
-// ===============================
-// SETUP
-// ===============================
 function setup() {
     createCanvas(windowWidth, windowHeight);
+    textFont("Segoe UI");
 }
 
-// ===============================
-// INICIO GENERAL
-// ===============================
 async function iniciarTodo() {
     const file = document.getElementById("audioFile").files[0];
     if (!file) return;
 
     document.getElementById("setup-panel").classList.add("hidden");
-    document.getElementById("hud").classList.remove("hidden");
     document.getElementById("footer-controls").classList.remove("hidden");
+    document.getElementById("hud").classList.remove("hidden");
 
-    songKey = "Analizando...";
-
-    // 1️⃣ ANALISIS OFFLINE REAL (RÁPIDO)
-    await analyzeSongKeyOffline(file);
-
-    // 2️⃣ INICIAR SISTEMA NORMAL
     cargarLetra();
     await getAudioContext().resume();
 
-    song = loadSound(URL.createObjectURL(file), () => {
+    song = loadSound(URL.createObjectURL(file), async () => {
         fftSong = new p5.FFT(0.9, 2048);
         fftSong.setInput(song);
+
+        // 🔥 ANALISIS OFFLINE COMPLETO
+        await analyzeFullSongKey();
 
         mic = new p5.AudioIn();
         mic.start(() => {
             const modelURL =
-              "https://raw.githubusercontent.com/ml5js/ml5-data-and-models/main/models/pitch-detection/crepe/";
-            pitchUser = ml5.pitchDetection(
-                modelURL,
-                getAudioContext(),
-                mic.stream,
-                () => {
-                    ready = true;
-                    song.play();
-                }
-            );
+            "https://raw.githubusercontent.com/ml5js/ml5-data-and-models/main/models/pitch-detection/crepe/";
+            pitchUser = ml5.pitchDetection(modelURL, getAudioContext(), mic.stream, () => {
+                ready = true;
+                song.play();
+            });
         });
     });
 }
 
 // ===============================
-// ANALISIS OFFLINE DE CLAVE (RÁPIDO)
+// ANALISIS DE CLAVE COMPLETA
 // ===============================
-async function analyzeSongKeyOffline(file) {
-    const arrayBuffer = await file.arrayBuffer();
-    const audioCtx = new AudioContext();
-    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+async function analyzeFullSongKey() {
+    let votes = new Array(24).fill(0);
+    let windowSize = 0.5;
+    let step = 0.25;
 
-    const offlineCtx = new OfflineAudioContext(
-        1,
-        audioBuffer.length,
-        audioBuffer.sampleRate
-    );
+    song.play();
+    song.pause();
 
-    const source = offlineCtx.createBufferSource();
-    source.buffer = audioBuffer;
+    for (let t = 0; t < song.duration(); t += step) {
+        song.jump(t);
+        await sleep(30);
 
-    const analyser = offlineCtx.createAnalyser();
-    analyser.fftSize = 4096;
+        let spectrum = fftSong.analyze();
+        let chroma = new Array(12).fill(0);
+        let nyquist = getAudioContext().sampleRate / 2;
 
-    source.connect(analyser);
-    analyser.connect(offlineCtx.destination);
-    source.start(0);
+        for (let i = 0; i < spectrum.length; i++) {
+            let amp = spectrum[i];
+            if (amp < 10) continue;
 
-    offlineCtx.oncomplete = () => {
-        songKey = detectKeyFromEnergy(keyEnergy);
-    };
-
-    const freqData = new Float32Array(analyser.frequencyBinCount);
-
-    function process() {
-        analyser.getFloatFrequencyData(freqData);
-        const nyquist = audioBuffer.sampleRate / 2;
-
-        for (let i = 0; i < freqData.length; i++) {
-            const mag = freqData[i];
-            if (mag < -80) continue;
-
-            const freq = (i / freqData.length) * nyquist;
+            let freq = (i / spectrum.length) * nyquist;
             if (freq < 80 || freq > 2000) continue;
 
-            const midi = Math.round(12 * Math.log2(freq / 440) + 69);
-            const note = ((midi % 12) + 12) % 12;
-            keyEnergy[note] += Math.pow(10, mag / 20);
+            let midi = Math.round(12 * Math.log2(freq / 440) + 69);
+            let note = ((midi % 12) + 12) % 12;
+            chroma[note] += amp;
         }
+
+        normalize(chroma);
+
+        let best = detectKeyFromChroma(chroma);
+        if (best >= 0) votes[best]++;
     }
 
-    analyser.onaudioprocess = process;
-    await offlineCtx.startRendering();
+    let winner = votes.indexOf(Math.max(...votes));
+    finalKey = formatKeyName(winner);
+    keyDetected = true;
 }
 
-// ===============================
-// DETECTAR CLAVE FINAL
-// ===============================
-function detectKeyFromEnergy(energy) {
+function detectKeyFromChroma(chroma) {
     let bestScore = -Infinity;
-    let bestKey = "--";
+    let bestKey = -1;
 
     for (let i = 0; i < 12; i++) {
-        let major = 0;
-        let minor = 0;
-
+        let maj = 0, min = 0;
         for (let j = 0; j < 12; j++) {
-            major += energy[(j + i) % 12] * MAJOR_PROFILE[j];
-            minor += energy[(j + i) % 12] * MINOR_PROFILE[j];
+            maj += chroma[(j+i)%12] * MAJOR_PROFILE[j];
+            min += chroma[(j+i)%12] * MINOR_PROFILE[j];
         }
-
-        if (major > bestScore) {
-            bestScore = major;
-            bestKey = notes[i] + " mayor";
-        }
-        if (minor > bestScore) {
-            bestScore = minor;
-            bestKey = notes[i] + " menor";
-        }
+        if (maj > bestScore) { bestScore = maj; bestKey = i; }
+        if (min > bestScore) { bestScore = min; bestKey = i + 12; }
     }
     return bestKey;
 }
 
+function formatKeyName(k) {
+    if (k < 12) return notes[k] + " mayor";
+    return notes[k-12] + " menor";
+}
+
+function normalize(arr) {
+    let sum = arr.reduce((a,b)=>a+b,0);
+    if (sum === 0) return;
+    for (let i=0;i<arr.length;i++) arr[i] /= sum;
+}
+
+function sleep(ms) {
+    return new Promise(r => setTimeout(r, ms));
+}
+
 // ===============================
-// DRAW
+// DIBUJO
 // ===============================
 function draw() {
     background(5,5,15);
-
-    // LINEA CENTRAL
-    stroke(0,242,255,160);
-    strokeWeight(2);
-    line(width/2, 0, width/2, height);
-
-    // HUD CLAVE
-    noStroke();
-    fill(255);
-    textAlign(LEFT, TOP);
-    textSize(16);
-    text("Clave: " + songKey, 20, 20);
-
     if (!ready) return;
 
     drawGrid();
@@ -204,18 +171,24 @@ function draw() {
         fill(0,242,255,150); noStroke();
         ellipse(width/2,y,40);
         fill(255); ellipse(width/2,y,15);
-
-        let midi=Math.round(12*Math.log2(freqUser/440)+69);
-        document.getElementById("note").innerText=notes[midi%12];
-    } else {
-        document.getElementById("note").innerText="--";
     }
+
+    // ---- CLAVE FINAL (FIJA) ----
+    noStroke();
+    fill(255);
+    textSize(20);
+    textAlign(LEFT, TOP);
+    text("Clave: " + finalKey, 20, 20);
+
+    stroke(0,242,255,160);
+    strokeWeight(2);
+    line(width/2, 0, width/2, height);
 
     updateUI();
 }
 
 // ===============================
-// RESTO DE FUNCIONES
+// UTILIDADES
 // ===============================
 function drawGrid() {
     for (let i=36;i<84;i++) {
@@ -225,7 +198,6 @@ function drawGrid() {
         noStroke(); fill(0,242,255,120);
         text(notes[i%12]+(Math.floor(i/12)-1),25,y);
     }
-    stroke(0,242,255,40); line(80,0,80,height);
 }
 
 function freqToY(f) {
