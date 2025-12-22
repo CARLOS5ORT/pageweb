@@ -8,12 +8,14 @@ const TIME_SCALE = 300;
 const notes = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 
 // ===============================
-// CLAVE FINAL (FIJA)
+// CLAVE GLOBAL
 // ===============================
+let keyEnergy = new Array(12).fill(0);
 let finalKey = "Analizando...";
-let keyDetected = false;
+let keyLocked = false;
+let analysisFrames = 0;
+const ANALYSIS_LIMIT = 180; // ~3 segundos
 
-// Perfiles Krumhansl (estándar)
 const MAJOR_PROFILE = [6.35,2.23,3.48,2.33,4.38,4.09,2.52,5.19,2.39,3.66,2.29,2.88];
 const MINOR_PROFILE = [6.33,2.68,3.52,5.38,2.60,3.53,2.54,4.75,3.98,2.69,3.34,3.17];
 
@@ -33,12 +35,13 @@ async function iniciarTodo() {
     cargarLetra();
     await getAudioContext().resume();
 
-    song = loadSound(URL.createObjectURL(file), async () => {
+    song = loadSound(URL.createObjectURL(file), () => {
         fftSong = new p5.FFT(0.9, 2048);
         fftSong.setInput(song);
 
-        // 🔥 ANALISIS OFFLINE COMPLETO
-        await analyzeFullSongKey();
+        // 🔊 reproducir en silencio para analizar
+        song.setVolume(0);
+        song.play();
 
         mic = new p5.AudioIn();
         mic.start(() => {
@@ -46,91 +49,21 @@ async function iniciarTodo() {
             "https://raw.githubusercontent.com/ml5js/ml5-data-and-models/main/models/pitch-detection/crepe/";
             pitchUser = ml5.pitchDetection(modelURL, getAudioContext(), mic.stream, () => {
                 ready = true;
-                song.play();
             });
         });
     });
 }
 
-// ===============================
-// ANALISIS DE CLAVE COMPLETA
-// ===============================
-async function analyzeFullSongKey() {
-    let votes = new Array(24).fill(0);
-    let windowSize = 0.5;
-    let step = 0.25;
-
-    song.play();
-    song.pause();
-
-    for (let t = 0; t < song.duration(); t += step) {
-        song.jump(t);
-        await sleep(30);
-
-        let spectrum = fftSong.analyze();
-        let chroma = new Array(12).fill(0);
-        let nyquist = getAudioContext().sampleRate / 2;
-
-        for (let i = 0; i < spectrum.length; i++) {
-            let amp = spectrum[i];
-            if (amp < 10) continue;
-
-            let freq = (i / spectrum.length) * nyquist;
-            if (freq < 80 || freq > 2000) continue;
-
-            let midi = Math.round(12 * Math.log2(freq / 440) + 69);
-            let note = ((midi % 12) + 12) % 12;
-            chroma[note] += amp;
-        }
-
-        normalize(chroma);
-
-        let best = detectKeyFromChroma(chroma);
-        if (best >= 0) votes[best]++;
-    }
-
-    let winner = votes.indexOf(Math.max(...votes));
-    finalKey = formatKeyName(winner);
-    keyDetected = true;
-}
-
-function detectKeyFromChroma(chroma) {
-    let bestScore = -Infinity;
-    let bestKey = -1;
-
-    for (let i = 0; i < 12; i++) {
-        let maj = 0, min = 0;
-        for (let j = 0; j < 12; j++) {
-            maj += chroma[(j+i)%12] * MAJOR_PROFILE[j];
-            min += chroma[(j+i)%12] * MINOR_PROFILE[j];
-        }
-        if (maj > bestScore) { bestScore = maj; bestKey = i; }
-        if (min > bestScore) { bestScore = min; bestKey = i + 12; }
-    }
-    return bestKey;
-}
-
-function formatKeyName(k) {
-    if (k < 12) return notes[k] + " mayor";
-    return notes[k-12] + " menor";
-}
-
-function normalize(arr) {
-    let sum = arr.reduce((a,b)=>a+b,0);
-    if (sum === 0) return;
-    for (let i=0;i<arr.length;i++) arr[i] /= sum;
-}
-
-function sleep(ms) {
-    return new Promise(r => setTimeout(r, ms));
-}
-
-// ===============================
-// DIBUJO
-// ===============================
 function draw() {
     background(5,5,15);
     if (!ready) return;
+
+    // ===============================
+    // ANALISIS DE CLAVE (SOLO AL INICIO)
+    // ===============================
+    if (!keyLocked) {
+        analyzeKeyFrame();
+    }
 
     drawGrid();
 
@@ -166,14 +99,9 @@ function draw() {
         line(x, b.y, x+45, b.y);
     }
 
-    if (freqUser>0) {
-        let y=freqToY(freqUser);
-        fill(0,242,255,150); noStroke();
-        ellipse(width/2,y,40);
-        fill(255); ellipse(width/2,y,15);
-    }
-
-    // ---- CLAVE FINAL (FIJA) ----
+    // ===============================
+    // CLAVE FINAL (FIJA)
+    // ===============================
     noStroke();
     fill(255);
     textSize(20);
@@ -185,6 +113,52 @@ function draw() {
     line(width/2, 0, width/2, height);
 
     updateUI();
+}
+
+// ===============================
+// ANALISIS DE CLAVE POR FRAMES
+// ===============================
+function analyzeKeyFrame() {
+    let spectrum = fftSong.analyze();
+    let nyquist = getAudioContext().sampleRate / 2;
+
+    for (let i = 0; i < spectrum.length; i++) {
+        let amp = spectrum[i];
+        if (amp < 8) continue;
+
+        let freq = (i / spectrum.length) * nyquist;
+        if (freq < 80 || freq > 2000) continue;
+
+        let midi = Math.round(12 * Math.log2(freq / 440) + 69);
+        let note = ((midi % 12) + 12) % 12;
+        keyEnergy[note] += amp;
+    }
+
+    analysisFrames++;
+
+    if (analysisFrames > ANALYSIS_LIMIT) {
+        finalKey = detectKeyFromEnergy(keyEnergy);
+        keyLocked = true;
+
+        // 🔊 volver volumen normal
+        song.setVolume(1);
+    }
+}
+
+function detectKeyFromEnergy(energy) {
+    let bestScore = -Infinity;
+    let bestKey = "--";
+
+    for (let i = 0; i < 12; i++) {
+        let major = 0, minor = 0;
+        for (let j = 0; j < 12; j++) {
+            major += energy[(j+i)%12] * MAJOR_PROFILE[j];
+            minor += energy[(j+i)%12] * MINOR_PROFILE[j];
+        }
+        if (major > bestScore) { bestScore = major; bestKey = notes[i] + " mayor"; }
+        if (minor > bestScore) { bestScore = minor; bestKey = notes[i] + " menor"; }
+    }
+    return bestKey;
 }
 
 // ===============================
