@@ -7,16 +7,25 @@ let ready = false;
 const TIME_SCALE = 300;
 const notes = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 
-// ===== CLAVE =====
+// ===============================
+// TONALIDAD GLOBAL (UNA SOLA VEZ)
+// ===============================
 let keyEnergy = new Array(12).fill(0);
-let detectedKey = "--";
-let lastKeyUpdate = 0;
+let songKey = "--";
+let globalKeyDetected = false;
 
 const MAJOR_PROFILE = [6.35,2.23,3.48,2.33,4.38,4.09,2.52,5.19,2.39,3.66,2.29,2.88];
 const MINOR_PROFILE = [6.33,2.68,3.52,5.38,2.60,3.53,2.54,4.75,3.98,2.69,3.34,3.17];
 
 function setup() {
     createCanvas(windowWidth, windowHeight);
+
+    // FORZAR HUD ARRIBA A LA IZQUIERDA
+    const hud = document.getElementById("hud");
+    hud.style.left = "20px";
+    hud.style.right = "auto";
+    hud.style.top = "20px";
+    hud.style.textAlign = "left";
 }
 
 async function iniciarTodo() {
@@ -38,10 +47,18 @@ async function iniciarTodo() {
         mic.start(() => {
             const modelURL =
             "https://raw.githubusercontent.com/ml5js/ml5-data-and-models/main/models/pitch-detection/crepe/";
-            pitchUser = ml5.pitchDetection(modelURL, getAudioContext(), mic.stream, () => {
-                ready = true;
-                song.play();
-            });
+            pitchUser = ml5.pitchDetection(
+                modelURL,
+                getAudioContext(),
+                mic.stream,
+                () => {
+                    ready = true;
+                    song.play();
+
+                    // ⏱️ ANALIZAR TONALIDAD GLOBAL (UNA SOLA VEZ)
+                    setTimeout(analyzeSongKeyOnce, 2500);
+                }
+            );
         });
     });
 }
@@ -52,7 +69,7 @@ function draw() {
 
     drawGrid();
 
-    // Línea central
+    // LINEA CENTRAL
     stroke(0,242,255,160);
     strokeWeight(2);
     line(width/2, 0, width/2, height);
@@ -60,6 +77,7 @@ function draw() {
     let now = song.currentTime();
     let fSong = detectPitchSong();
 
+    // BARRAS DE LA CANCIÓN
     if (fSong && fSong > 80 && fSong < 1100) {
         if (!bars.length || now - bars[bars.length-1].time > 0.15) {
             bars.push({ y: freqToY(fSong), time: now });
@@ -72,6 +90,7 @@ function draw() {
         voiceTrail.push({ y: freqToY(freqUser), time: now });
     }
 
+    // TRAZO VOZ
     stroke(0,242,255,180);
     strokeWeight(8);
     for (let i=1;i<voiceTrail.length;i++) {
@@ -80,6 +99,7 @@ function draw() {
         line(x1, voiceTrail[i-1].y, x2, voiceTrail[i].y);
     }
 
+    // BARRAS NOTAS CANCIÓN
     stroke("#ff00ff");
     strokeWeight(12);
     for (let b of bars) {
@@ -87,25 +107,30 @@ function draw() {
         line(x, b.y, x+45, b.y);
     }
 
+    // NOTA USUARIO
     if (freqUser > 0) {
         let midi = Math.round(12*Math.log2(freqUser/440)+69);
-        document.getElementById("note").innerText = notes[midi%12];
+        document.getElementById("note").innerText = notes[midi % 12];
     } else {
         document.getElementById("note").innerText = "--";
     }
 
-    analyzeKey();
-    document.getElementById("key").innerText = detectedKey;
+    // MOSTRAR TONALIDAD GLOBAL
+    document.getElementById("key").innerText = songKey;
 
     updateUI();
 }
 
-// ===== ANALISIS DE CLAVE =====
-function analyzeKey() {
+// ===============================
+// ANALISIS DE TONALIDAD GLOBAL
+// ===============================
+function analyzeSongKeyOnce() {
+    if (globalKeyDetected) return;
+
     let spectrum = fftSong.analyze();
     let nyquist = getAudioContext().sampleRate / 2;
 
-    for (let i=0;i<spectrum.length;i++) {
+    for (let i = 0; i < spectrum.length; i++) {
         let amp = spectrum[i];
         if (amp < 5) continue;
 
@@ -113,33 +138,43 @@ function analyzeKey() {
         if (freq < 80 || freq > 2000) continue;
 
         let midi = Math.round(12 * Math.log2(freq / 440) + 69);
-        keyEnergy[((midi % 12) + 12) % 12] += amp;
+        let note = ((midi % 12) + 12) % 12;
+
+        keyEnergy[note] += amp;
     }
 
-    if (millis() - lastKeyUpdate > 3000) {
-        detectedKey = detectKeyFromEnergy(keyEnergy);
-        keyEnergy.fill(0);
-        lastKeyUpdate = millis();
-    }
+    songKey = detectKeyFromEnergy(keyEnergy);
+    globalKeyDetected = true;
 }
 
+// ===============================
+// DETECTOR DE CLAVE
+// ===============================
 function detectKeyFromEnergy(energy) {
     let bestScore = -Infinity;
     let bestKey = "--";
 
-    for (let i=0;i<12;i++) {
-        let major=0, minor=0;
-        for (let j=0;j<12;j++) {
+    for (let i = 0; i < 12; i++) {
+        let major = 0, minor = 0;
+        for (let j = 0; j < 12; j++) {
             major += energy[(j+i)%12] * MAJOR_PROFILE[j];
             minor += energy[(j+i)%12] * MINOR_PROFILE[j];
         }
-        if (major > bestScore) { bestScore = major; bestKey = notes[i] + " mayor"; }
-        if (minor > bestScore) { bestScore = minor; bestKey = notes[i] + " menor"; }
+        if (major > bestScore) {
+            bestScore = major;
+            bestKey = notes[i] + " mayor";
+        }
+        if (minor > bestScore) {
+            bestScore = minor;
+            bestKey = notes[i] + " menor";
+        }
     }
     return bestKey;
 }
 
-// ===== UTILIDADES =====
+// ===============================
+// UTILIDADES
+// ===============================
 function drawGrid() {
     for (let i=36;i<84;i++) {
         let f=440*Math.pow(2,(i-69)/12);
