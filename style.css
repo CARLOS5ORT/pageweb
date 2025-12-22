@@ -87,9 +87,11 @@ body {
 #hud {
     position: absolute;
     top: 20px;
-    right: 360px;
-    text-align: right;
+    left: 20px;
+    right: auto;
+    text-align: left;
 }
+
 
 #note {
     font-size: 60px;
