@@ -2,42 +2,41 @@
 
 const HF_TOKEN = "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"; // <--- ¡PEGA TU TOKEN DE HUGGING FACE AQUÍ!
 /* =========================================
-   1. CONFIGURACIÓN IA (HUGGING FACE)
+   1. CONFIGURACIÓN IA
    ========================================= */
+// IMPORTANTE: Pon tu token real aquí. Mantén el espacio después de Bearer.
 
 const HF_API_URL = "https://api-inference.huggingface.co/models/renumics/key_detection";
 
 /* =========================================
-   2. VARIABLES GLOBALES Y AUDIO
+   2. VARIABLES DE p5.js Y ESTADO
    ========================================= */
 let cancion;
 let analizador;
-let detectorPitch;
 let audioCargado = false;
-let letraLines = [];
 
 /* =========================================
-   3. INICIO Y ANÁLISIS (BOTÓN PRINCIPAL)
+   3. LÓGICA DEL BOTÓN PRINCIPAL
    ========================================= */
-[cite_start]// Usamos el ID del botón de tu HTML [cite: 1, 2]
 const btnAnalizar = document.getElementById('btnAnalizar');
 
 if (btnAnalizar) {
     btnAnalizar.onclick = async function() {
-        const fileInput = document.getElementById('audioFile'); [cite_start]// [cite: 1]
+        const fileInput = document.getElementById('audioFile');
         const file = fileInput.files[0];
 
         if (!file) {
-            alert("Selecciona un archivo primero");
+            alert("Por favor, selecciona un archivo de audio primero.");
             return;
         }
 
-        // Bloquear botón mientras la IA trabaja
-        btnAnalizar.innerText = "ANALIZANDO CLAVE...";
+        // Feedback visual
+        btnAnalizar.innerText = "ANALIZANDO...";
         btnAnalizar.disabled = true;
 
         try {
-            // Llamada a Hugging Face (Detección de Tonalidad)
+            console.log("Iniciando petición a Hugging Face...");
+            
             const response = await fetch(HF_API_URL, {
                 headers: { 
                     "Authorization": HF_TOKEN,
@@ -48,56 +47,77 @@ if (btnAnalizar) {
             });
             
             const data = await response.json();
+            console.log("Datos recibidos de la IA:", data);
 
-            [cite_start]// Mostrar el resultado en el HUD [cite: 3]
             const keyDisplay = document.getElementById('hf-key');
             if (data && data[0] && keyDisplay) {
                 keyDisplay.innerText = "CLAVE: " + data[0].label;
+            } else if (data.error) {
+                console.warn("IA Error:", data.error);
+                if (keyDisplay) keyDisplay.innerText = "CLAVE: Cargando modelo...";
             }
 
         } catch (error) {
-            console.error("Error IA:", error);
-            document.getElementById('hf-key').innerText = "CLAVE: Error API";
+            console.error("Error crítico en la llamada IA:", error);
+            const keyDisplay = document.getElementById('hf-key');
+            if (keyDisplay) keyDisplay.innerText = "CLAVE: No disponible";
         } finally {
+            // PASE LO QUE PASE, arrancamos la aplicación
             btnAnalizar.innerText = "CARGAR Y ANALIZAR";
             btnAnalizar.disabled = false;
             
-            [cite_start]// Una vez terminada la IA, arrancamos tu lógica original [cite: 2]
+            console.log("Llamando a iniciarTodo...");
             iniciarTodo();
         }
     };
 }
 
 /* =========================================
-   4. FUNCIONES DE CONTROL (BOTONES FOOTER)
+   4. FUNCIONES DE CONTROL Y p5.js
    ========================================= */
 
 function iniciarTodo() {
-    [cite_start]// Gestión de paneles [cite: 1, 2, 3, 4]
+    // 1. Gestionar visibilidad de paneles (Basado en tu HTML) [cite: 1, 3, 4]
     document.getElementById('setup-panel').classList.add('hidden');
     document.getElementById('footer-controls').classList.remove('hidden');
     document.getElementById('hud').classList.remove('hidden');
     document.getElementById('lyrics-panel').classList.remove('hidden');
 
-    [cite_start]// Cargar la letra del textarea [cite: 1, 3, 4]
-    const rawLyrics = document.getElementById('lyricsInput').value;
+    // 2. Cargar letra
+    const lyricsInput = document.getElementById('lyricsInput');
     const lyricsBox = document.getElementById('lyrics-box');
-    lyricsBox.innerText = rawLyrics;
+    if (lyricsInput && lyricsBox) {
+        lyricsBox.innerText = lyricsInput.value;
+    }
 
-    // Lógica para cargar el archivo en p5.js
-    const file = document.getElementById('audioFile').files[0];
-    const url = URL.createObjectURL(file);
-    
-    cancion = loadSound(url, () => {
-        audioCargado = true;
-        cancion.play();
-        loop(); // Inicia el dibujo de p5.js
-    });
+    // 3. Cargar Audio en p5.js [cite: 1]
+    const fileInput = document.getElementById('audioFile');
+    if (fileInput.files[0]) {
+        const url = URL.createObjectURL(fileInput.files[0]);
+        cancion = loadSound(url, () => {
+            console.log("Audio cargado exitosamente en p5.js");
+            audioCargado = true;
+            cancion.play();
+            loop(); // Inicia el dibujo de p5.js [cite: 1]
+        });
+    }
 }
 
-function togglePlay() {
+// FUNCIONES GLOBALES PARA EL HTML [cite: 2, 3]
+window.cambiarCancion = function() {
+    location.reload();
+};
+
+window.saltar = function(segundos) {
+    if (cancion && audioCargado) {
+        let t = cancion.currentTime();
+        cancion.jump(constrain(t + segundos, 0, cancion.duration()));
+    }
+};
+
+window.togglePlay = function() {
     if (!cancion) return;
-    const btn = document.getElementById('playBtn'); [cite_start]// [cite: 2]
+    const btn = document.getElementById('playBtn');
     if (cancion.isPlaying()) {
         cancion.pause();
         btn.innerText = "PLAY";
@@ -105,63 +125,55 @@ function togglePlay() {
         cancion.play();
         btn.innerText = "PAUSA";
     }
-}
+};
 
-function detener() {
+window.detener = function() {
     if (cancion) {
         cancion.stop();
-        document.getElementById('playBtn').innerText = "PLAY"; [cite_start]// [cite: 3]
+        document.getElementById('playBtn').innerText = "PLAY";
     }
-}
+};
 
-function saltar(segundos) {
-    if (!cancion) return;
-    let t = cancion.currentTime();
-    cancion.jump(constrain(t + segundos, 0, cancion.duration()));
-}
-
-function cambiarCancion() {
-    location.reload(); [cite_start]// [cite: 2]
-}
-
-function clickBarra(event) {
-    if (!cancion) return;
-    const bar = document.getElementById('progress-container'); [cite_start]// [cite: 2]
+window.clickBarra = function(event) {
+    if (!cancion || !audioCargado) return;
+    const bar = document.getElementById('progress-container');
     const rect = bar.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const porcentaje = x / rect.width;
     cancion.jump(cancion.duration() * porcentaje);
-}
+};
 
 /* =========================================
-   5. LÓGICA DE DIBUJO (P5.JS)
+   5. LÓGICA DE DIBUJO (p5.js)
    ========================================= */
 
 function setup() {
-    let canvas = createCanvas(windowWidth, windowHeight);
-    canvas.position(0, 0);
-    canvas.style('z-index', '-1');
-    noLoop(); // No dibuja hasta que cargue la canción
-    
+    // Canvas en el fondo [cite: 1]
+    let cnv = createCanvas(windowWidth, windowHeight);
+    cnv.position(0, 0);
+    cnv.style('z-index', '-1');
+    noLoop(); // Esperar al audio
     analizador = new p5.FFT();
 }
 
 function draw() {
     background(5);
     
-    if (audioCargado && cancion.isPlaying()) {
-        [cite_start]// Actualizar barra de progreso [cite: 2]
+    if (audioCargado && cancion && cancion.isPlaying()) {
+        // Actualizar UI de progreso y tiempo [cite: 2, 3]
         let p = (cancion.currentTime() / cancion.duration()) * 100;
-        document.getElementById('progress-bar').style.width = p + "%";
+        const progressBar = document.getElementById('progress-bar');
+        if (progressBar) progressBar.style.width = p + "%";
         
-        [cite_start]// Actualizar tiempo [cite: 2]
-        document.getElementById('time').innerText = 
-            nf(cancion.currentTime(), 0, 1) + " / " + nf(cancion.duration(), 0, 1);
+        const timeDisplay = document.getElementById('time');
+        if (timeDisplay) {
+            timeDisplay.innerText = nf(cancion.currentTime(), 0, 1) + " / " + nf(cancion.duration(), 0, 1);
+        }
 
-        // DIBUJAR LÍNEAS MAGENTA
+        // Espectro Magenta [cite: 1]
         let spectrum = analizador.analyze();
         noFill();
-        stroke(255, 0, 255); // Magenta
+        stroke(255, 0, 255); 
         strokeWeight(3);
         
         beginShape();
