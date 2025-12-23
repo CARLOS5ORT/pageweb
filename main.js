@@ -1,180 +1,280 @@
-/* =========================================
-   1. CONFIGURACIÓN IA
-   ========================================= */
-// IMPORTANTE: Asegúrate de que el token sea correcto.
-const HF_TOKEN = "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"; 
-const HF_API_URL = "https://api-inference.huggingface.co/models/renumics/key_detection";
+const TIME_SCALE = 220;
 
-/* =========================================
-   2. VARIABLES DE ESTADO
-   ========================================= */
-let cancion;
-let analizador;
-let audioCargado = false;
+let song, mic, pitchUser, fftSong;
+let bars = [];
+let voiceTrail = [];
+let freqUser = 0;
+let ready = false;
 
-/* =========================================
-   3. FUNCIONES DE CONTROL (FOOTER)
-   ========================================= */
-
-// Definimos iniciarTodo primero para que esté disponible globalmente
-window.iniciarTodo = function() {
-    [cite_start]console.log("Iniciando aplicación..."); [cite: 4]
-    
-    [cite_start]// Gestión de paneles según tu HTML [cite: 1, 2, 4]
-    [cite_start]const setup = document.getElementById('setup-panel'); [cite: 1]
-    [cite_start]const footer = document.getElementById('footer-controls'); [cite: 2]
-    [cite_start]const hud = document.getElementById('hud'); [cite: 3]
-    [cite_start]const lyrics = document.getElementById('lyrics-panel'); [cite: 3]
-
-    [cite_start]if (setup) setup.classList.add('hidden'); [cite: 1]
-    [cite_start]if (footer) footer.classList.remove('hidden'); [cite: 2]
-    [cite_start]if (hud) hud.classList.remove('hidden'); [cite: 3]
-    [cite_start]if (lyrics) lyrics.classList.remove('hidden'); [cite: 3]
-
-    [cite_start]// Cargar letra [cite: 1, 3]
-    [cite_start]const input = document.getElementById('lyricsInput'); [cite: 1]
-    [cite_start]const box = document.getElementById('lyrics-box'); [cite: 3]
-    [cite_start]if (input && box) box.innerText = input.value; [cite: 1, 3]
-
-    [cite_start]// Cargar Audio en p5.js [cite: 1]
-    [cite_start]const audioFile = document.getElementById('audioFile'); [cite: 1]
-    if (audioFile && audioFile.files[0]) {
-        const url = URL.createObjectURL(audioFile.files[0]);
-        cancion = loadSound(url, () => {
-            audioCargado = true;
-            cancion.play();
-            loop(); 
-        });
-    }
-};
-
-/* =========================================
-   4. LÓGICA DEL BOTÓN PRINCIPAL
-   ========================================= */
-[cite_start]// Buscamos el botón por ID [cite: 2]
-[cite_start]const btnAnalizar = document.getElementById('btnAnalizar'); [cite: 2]
-
-if (btnAnalizar) {
-    btnAnalizar.onclick = async function() {
-        [cite_start]const fileInput = document.getElementById('audioFile'); [cite: 1]
-        const file = fileInput && fileInput.files[0];
-
-        if (!file) {
-            alert("Por favor, selecciona un archivo de audio primero.");
-            return;
-        }
-
-        // Feedback visual inmediato
-        btnAnalizar.innerText = "PROCESANDO...";
-        btnAnalizar.disabled = true;
-
-        // Intentar análisis de IA en segundo plano
-        try {
-            const response = await fetch(HF_API_URL, {
-                headers: { 
-                    "Authorization": HF_TOKEN,
-                    "x-wait-for-model": "true" 
-                },
-                method: "POST",
-                body: file
-            });
-            
-            const data = await response.json();
-            const keyDisplay = document.getElementById('hf-key');
-
-            if (data && data[0] && keyDisplay) {
-                keyDisplay.innerText = "CLAVE: " + data[0].label;
-            }
-        } catch (e) {
-            console.error("Error en IA:", e);
-            const keyDisplay = document.getElementById('hf-key');
-            if (keyDisplay) keyDisplay.innerText = "CLAVE: No disponible";
-        } finally {
-            // Restaurar botón y arrancar visualizador pase lo que pase
-            [cite_start]btnAnalizar.innerText = "CARGAR Y ANALIZAR"; [cite: 2]
-            btnAnalizar.disabled = false;
-            window.iniciarTodo(); 
-        }
-    };
-}
-
-/* =========================================
-   5. LÓGICA DE DIBUJO (p5.js)
-   ========================================= */
+const notes = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 
 function setup() {
-    let cnv = createCanvas(windowWidth, windowHeight);
-    cnv.position(0, 0);
-    cnv.style('z-index', '-1');
-    noLoop(); 
-    analizador = new p5.FFT();
+    createCanvas(windowWidth, windowHeight);
+}
+
+async function iniciarTodo() {
+    const file = document.getElementById("audioFile").files[0];
+    if (!file) {
+        alert("Por favor selecciona un archivo de audio.");
+        return;
+    }
+
+    document.getElementById("setup-panel").classList.add("hidden");
+    document.getElementById("footer-controls").classList.remove("hidden");
+    document.getElementById("hud").classList.remove("hidden");
+
+    cargarLetra();
+    await getAudioContext().resume();
+
+    song = loadSound(URL.createObjectURL(file), () => {
+        fftSong = new p5.FFT(0.9, 2048);
+        fftSong.setInput(song);
+
+        mic = new p5.AudioIn();
+        mic.start(() => {
+            const modelURL =
+              "https://raw.githubusercontent.com/ml5js/ml5-data-and-models/main/models/pitch-detection/crepe/";
+            pitchUser = ml5.pitchDetection(
+                modelURL,
+                getAudioContext(),
+                mic.stream,
+                () => {
+                    ready = true;
+                    song.play();
+                }
+            );
+        });
+    });
 }
 
 function draw() {
-    background(5);
-    
-    if (audioCargado && cancion && cancion.isPlaying()) {
-        // Líneas Magenta
-        let spectrum = analizador.analyze();
-        noFill();
-        stroke(255, 0, 255); 
-        strokeWeight(3);
-        
-        beginShape();
-        for (let i = 0; i < spectrum.length; i++) {
-            let x = map(i, 0, spectrum.length, 0, width);
-            let h = map(spectrum[i], 0, 255, height, height / 2);
-            vertex(x, h);
-        }
-        endShape();
+    background(5,5,15);
+    if (!ready) return;
 
-        [cite_start]// Barra de progreso y tiempo [cite: 2, 3]
-        let p = (cancion.currentTime() / cancion.duration()) * 100;
-        [cite_start]const progressBar = document.getElementById('progress-bar'); [cite: 2]
-        if (progressBar) progressBar.style.width = p + "%";
-        
-        [cite_start]const timeDisplay = document.getElementById('time'); [cite: 3]
-        if (timeDisplay) {
-            timeDisplay.innerText = nf(cancion.currentTime(), 0, 1) + " / " + nf(cancion.duration(), 0, 1);
+    drawGrid();
+
+    stroke(255,255,255,120);
+    strokeWeight(2);
+    line(width/2, 0, width/2, height);
+
+    const now = song.currentTime();
+
+    const fSong = detectPitchSong();
+    if (fSong && fSong > 80 && fSong < 1100) {
+        if (!bars.length || now - bars[bars.length-1].time > 0.15) {
+            bars.push({ y: freqToY(fSong), time: now });
         }
+    }
+
+    if (bars.length > 0 && bars[0].time < now - 5) bars.shift();
+    if (voiceTrail.length > 0 && voiceTrail[0].time < now - 5) voiceTrail.shift();
+
+    stroke("#ff00ff");
+    strokeWeight(12);
+    for (let b of bars) {
+        let x = width/2 + (b.time - now) * TIME_SCALE;
+        if (x < 80 || x > width) continue;
+        line(x, b.y, x + 45, b.y);
+    }
+
+    pitchUser.getPitch((e,f)=> freqUser = f || 0);
+    if (freqUser > 0) {
+        voiceTrail.push({
+            y: freqToY(freqUser),
+            freq: freqUser,
+            time: now,
+            color: null
+        });
+    }
+
+    strokeWeight(8);
+    for (let i = 1; i < voiceTrail.length; i++) {
+        const p1 = voiceTrail[i-1];
+        const p2 = voiceTrail[i];
+
+        const x1 = width/2 + (p1.time - now) * TIME_SCALE;
+        const x2 = width/2 + (p2.time - now) * TIME_SCALE;
+
+        if (x2 < 80 || x1 > width) continue;
+
+        if (p2.color === null && x1 < width/2 && x2 >= width/2) {
+            const target = nearestBarY(p2.time);
+            const diff = Math.abs(p2.y - target);
+            p2.color = diff < 30 ? color(0,242,255,200) : color(255,70,70,200);
+        }
+
+        stroke(p2.color || color(160,160,160,120));
+        line(x1, p1.y, x2, p2.y);
+    }
+
+    if (freqUser > 0) {
+        let y = freqToY(freqUser);
+        fill(255); noStroke();
+        ellipse(width/2, y, 14);
+
+        let midi = Math.round(12 * Math.log2(freqUser / 440) + 69);
+        document.getElementById("note").innerText = notes[midi % 12];
+    } else {
+        document.getElementById("note").innerText = "--";
+    }
+
+    updateUI();
+}
+
+// ================= UTILIDADES =================
+
+function nearestBarY(time) {
+    let closest = null;
+    let minDiff = Infinity;
+    for (let b of bars) {
+        let d = Math.abs(b.time - time);
+        if (d < minDiff) {
+            minDiff = d;
+            closest = b.y;
+        }
+    }
+    return closest ?? height/2;
+}
+
+function detectPitchSong() {
+    let w = fftSong.waveform();
+    let best = -1, bestCorr = 0;
+    for (let o=20; o<1000; o++) {
+        let c=0;
+        for (let i=0; i<w.length-o; i++) c += w[i] * w[i+o];
+        if (c > bestCorr) { bestCorr = c; best = o; }
+    }
+    return best > 0 ? getAudioContext().sampleRate/best : null;
+}
+
+function freqToY(f) {
+    return map(Math.log(f), Math.log(80), Math.log(1100), height-160, 50);
+}
+
+function drawGrid() {
+    for (let i=36; i<84; i++) {
+        let f = 440 * Math.pow(2, (i-69)/12);
+        let y = freqToY(f);
+        stroke(255,10);
+        line(80, y, width, y);
+
+        noStroke();
+        fill(0,242,255,120);
+        text(notes[i%12] + (Math.floor(i/12)-1), 25, y);
+    }
+    stroke(0,242,255,40);
+    line(80, 0, 80, height);
+}
+
+// ================= UI =================
+
+function updateUI() {
+    if (!song) return;
+    let c = song.currentTime();
+    let d = song.duration();
+    document.getElementById("progress-bar").style.width = (c/d*100) + "%";
+    document.getElementById("time").innerText = Math.floor(c) + " / " + Math.floor(d);
+}
+
+function togglePlay() {
+    const btn = document.getElementById("playBtn");
+    if (song.isPlaying()) {
+        song.pause();
+        btn.innerText = "PLAY";
+    } else {
+        song.play();
+        btn.innerText = "PAUSA";
     }
 }
 
-/* --- Funciones Globales para Botones --- */
-[cite_start]window.cambiarCancion = () => location.reload(); [cite: 2]
+function saltar(s) {
+    if (song) song.jump(constrain(song.currentTime()+s, 0, song.duration()));
+}
 
-window.togglePlay = function() {
-    if (!cancion) return;
-    [cite_start]const btn = document.getElementById('playBtn'); [cite: 2]
-    if (cancion.isPlaying()) {
-        cancion.pause();
-        [cite_start]if (btn) btn.innerText = "PLAY"; [cite: 2]
-    } else {
-        cancion.play();
-        [cite_start]if (btn) btn.innerText = "PAUSA"; [cite: 2]
+function detener() {
+    if (song) {
+        song.stop();
+        bars = [];
+        voiceTrail = [];
+        document.getElementById("playBtn").innerText = "PLAY";
     }
-};
+}
 
-window.detener = function() {
-    if (cancion) {
-        cancion.stop();
-        [cite_start]const btn = document.getElementById('playBtn'); [cite: 2]
-        [cite_start]if (btn) btn.innerText = "PLAY"; [cite: 2]
-    }
-};
+function cambiarCancion() {
+    detener();
+    location.reload();
+}
 
-window.saltar = function(s) {
-    [cite_start]if (cancion) cancion.jump(constrain(cancion.currentTime() + s, 0, cancion.duration())); [cite: 3]
-};
+function clickBarra(e) {
+    if (!song) return;
+    let r = e.target.getBoundingClientRect();
+    let seekPos = (e.clientX - r.left) / r.width;
+    song.jump(seekPos * song.duration());
+}
 
-window.clickBarra = function(e) {
-    if (!cancion) return;
-    [cite_start]const bar = document.getElementById('progress-container'); [cite: 2]
-    const rect = bar.getBoundingClientRect();
-    const porcentaje = (e.clientX - rect.left) / rect.width;
-    cancion.jump(cancion.duration() * porcentaje);
-};
+// ================= LETRA =================
+
+function cargarLetra() {
+    const text = document.getElementById("lyricsInput").value.trim();
+    if (!text) return;
+
+    const box = document.getElementById("lyrics-box");
+    box.innerHTML = "";
+    text.split("\n").forEach(l => {
+        if(l.trim() !== "") {
+            let s = document.createElement("span");
+            s.textContent = l;
+            box.appendChild(s);
+        }
+    });
+    document.getElementById("lyrics-panel").classList.remove("hidden");
+}
 
 function windowResized() {
     resizeCanvas(windowWidth, windowHeight);
+}
+
+/* =====================================================
+   🔥 HUGGINGFACE INTEGRACIÓN (AGREGADO, NO MODIFICA NADA)
+   ===================================================== */
+
+const HF_TOKEN = "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";
+const HF_SPACE_URL = "https://carlos5ort-detector-tonalidad.hf.space/gradio_api/call/predict";
+
+// Hook sin tocar iniciarTodo original
+const iniciarTodoOriginal = iniciarTodo;
+iniciarTodo = async function () {
+    const file = document.getElementById("audioFile").files[0];
+    if (file) {
+        analizarTonalidadHF(file);
+    }
+    return iniciarTodoOriginal.apply(this, arguments);
+};
+
+async function analizarTonalidadHF(file) {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+        const res = await fetch(HF_SPACE_URL, {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${HF_TOKEN}`
+            },
+            body: formData
+        });
+
+        const data = await res.json();
+        mostrarTonalidad(data);
+    } catch (e) {
+        console.warn("HuggingFace no respondió:", e);
+    }
+}
+
+function mostrarTonalidad(data) {
+    let el = document.getElementById("key");
+    if (!el) return;
+
+    const key = data.key || data.label || data.result || "--";
+    el.innerText = key;
 }
