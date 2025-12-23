@@ -2,9 +2,10 @@
 
 const HF_TOKEN = "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"; // <--- ¡PEGA TU TOKEN DE HUGGING FACE AQUÍ!
 /* =========================================
+/* =========================================
    1. CONFIGURACIÓN IA
    ========================================= */
-// IMPORTANTE: Pon tu token real aquí. Mantén el espacio después de Bearer.
+// IMPORTANTE: Reemplaza con tu token real. Mantén el espacio después de Bearer.
 
 const HF_API_URL = "https://api-inference.huggingface.co/models/renumics/key_detection";
 
@@ -30,13 +31,12 @@ if (btnAnalizar) {
             return;
         }
 
-        // Feedback visual
+        // Feedback visual en el botón
         btnAnalizar.innerText = "ANALIZANDO...";
         btnAnalizar.disabled = true;
 
         try {
-            console.log("Iniciando petición a Hugging Face...");
-            
+            // Petición a Hugging Face
             const response = await fetch(HF_API_URL, {
                 headers: { 
                     "Authorization": HF_TOKEN,
@@ -47,63 +47,57 @@ if (btnAnalizar) {
             });
             
             const data = await response.json();
-            console.log("Datos recibidos de la IA:", data);
 
+            // Mostrar el resultado en el HUD
             const keyDisplay = document.getElementById('hf-key');
             if (data && data[0] && keyDisplay) {
                 keyDisplay.innerText = "CLAVE: " + data[0].label;
-            } else if (data.error) {
-                console.warn("IA Error:", data.error);
-                if (keyDisplay) keyDisplay.innerText = "CLAVE: Cargando modelo...";
             }
 
         } catch (error) {
-            console.error("Error crítico en la llamada IA:", error);
+            console.error("Error en la llamada IA:", error);
             const keyDisplay = document.getElementById('hf-key');
-            if (keyDisplay) keyDisplay.innerText = "CLAVE: No disponible";
+            if (keyDisplay) keyDisplay.innerText = "CLAVE: Error API";
         } finally {
-            // PASE LO QUE PASE, arrancamos la aplicación
+            // PASE LO QUE PASE, arrancamos la aplicación original
             btnAnalizar.innerText = "CARGAR Y ANALIZAR";
             btnAnalizar.disabled = false;
-            
-            console.log("Llamando a iniciarTodo...");
             iniciarTodo();
         }
     };
 }
 
 /* =========================================
-   4. FUNCIONES DE CONTROL Y p5.js
+   4. FUNCIONES DE CONTROL (FOOTER)
    ========================================= */
 
 function iniciarTodo() {
-    // 1. Gestionar visibilidad de paneles (Basado en tu HTML) [cite: 1, 3, 4]
+    // 1. Gestionar visibilidad de paneles [cite: 1, 2, 3, 4]
     document.getElementById('setup-panel').classList.add('hidden');
     document.getElementById('footer-controls').classList.remove('hidden');
     document.getElementById('hud').classList.remove('hidden');
     document.getElementById('lyrics-panel').classList.remove('hidden');
 
-    // 2. Cargar letra
+    // 2. Cargar letra del textarea
     const lyricsInput = document.getElementById('lyricsInput');
     const lyricsBox = document.getElementById('lyrics-box');
     if (lyricsInput && lyricsBox) {
         lyricsBox.innerText = lyricsInput.value;
     }
 
-    // 3. Cargar Audio en p5.js [cite: 1]
+    // 3. Cargar Audio en p5.js
     const fileInput = document.getElementById('audioFile');
     if (fileInput.files[0]) {
         const url = URL.createObjectURL(fileInput.files[0]);
         cancion = loadSound(url, () => {
-            console.log("Audio cargado exitosamente en p5.js");
             audioCargado = true;
             cancion.play();
-            loop(); // Inicia el dibujo de p5.js [cite: 1]
+            loop(); // Inicia el dibujo de p5.js
         });
     }
 }
 
-// FUNCIONES GLOBALES PARA EL HTML [cite: 2, 3]
+// Funciones globales vinculadas al HTML [cite: 2, 3]
 window.cambiarCancion = function() {
     location.reload();
 };
@@ -130,7 +124,8 @@ window.togglePlay = function() {
 window.detener = function() {
     if (cancion) {
         cancion.stop();
-        document.getElementById('playBtn').innerText = "PLAY";
+        const btn = document.getElementById('playBtn');
+        if (btn) btn.innerText = "PLAY";
     }
 };
 
@@ -148,11 +143,11 @@ window.clickBarra = function(event) {
    ========================================= */
 
 function setup() {
-    // Canvas en el fondo [cite: 1]
+    // Crear canvas que ocupe todo el fondo
     let cnv = createCanvas(windowWidth, windowHeight);
     cnv.position(0, 0);
     cnv.style('z-index', '-1');
-    noLoop(); // Esperar al audio
+    noLoop(); 
     analizador = new p5.FFT();
 }
 
@@ -160,7 +155,7 @@ function draw() {
     background(5);
     
     if (audioCargado && cancion && cancion.isPlaying()) {
-        // Actualizar UI de progreso y tiempo [cite: 2, 3]
+        // Barra de progreso y tiempo [cite: 2, 3]
         let p = (cancion.currentTime() / cancion.duration()) * 100;
         const progressBar = document.getElementById('progress-bar');
         if (progressBar) progressBar.style.width = p + "%";
@@ -170,7 +165,7 @@ function draw() {
             timeDisplay.innerText = nf(cancion.currentTime(), 0, 1) + " / " + nf(cancion.duration(), 0, 1);
         }
 
-        // Espectro Magenta [cite: 1]
+        // Espectro Magenta
         let spectrum = analizador.analyze();
         noFill();
         stroke(255, 0, 255); 
