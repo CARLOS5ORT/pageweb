@@ -29,7 +29,7 @@ async function iniciarTodo() {
     cargarLetra();
     await getAudioContext().resume();
 
-    // 🔥 Lanzar análisis HF (NO bloquea nada)
+    // 🔥 ANALIZAR TONALIDAD (NO BLOQUEA)
     analizarTonalidadHF(file);
 
     song = loadSound(URL.createObjectURL(file), () => {
@@ -75,8 +75,8 @@ function draw() {
         }
     }
 
-    if (bars.length && bars[0].time < now - 5) bars.shift();
-    if (voiceTrail.length && voiceTrail[0].time < now - 5) voiceTrail.shift();
+    bars = bars.filter(b => b.time > now - 5);
+    voiceTrail = voiceTrail.filter(v => v.time > now - 5);
 
     stroke("#ff00ff");
     strokeWeight(12);
@@ -86,7 +86,10 @@ function draw() {
         line(x, b.y, x + 45, b.y);
     }
 
-    pitchUser.getPitch((e,f)=> freqUser = f || 0);
+    if (pitchUser) {
+        pitchUser.getPitch((e,f)=> freqUser = f || 0);
+    }
+
     if (freqUser > 0) {
         voiceTrail.push({
             y: freqToY(freqUser),
@@ -149,6 +152,7 @@ function nearestBarY(time) {
 }
 
 function detectPitchSong() {
+    if (!fftSong) return null;
     let w = fftSong.waveform();
     let best = -1, bestCorr = 0;
     for (let o=20; o<1000; o++) {
@@ -250,39 +254,38 @@ function windowResized() {
 }
 
 /* =====================================================
-   🔥 HUGGINGFACE GRADIO (CORRECTO)
+   🔥 HUGGINGFACE GRADIO (FUNCIONAL)
    ===================================================== */
 
 const HF_BASE = "https://carlos5ort-detector-tonalidad.hf.space";
-const HF_FN_INDEX = 0;
 
 async function analizarTonalidadHF(file) {
     try {
-        // 1️⃣ iniciar predicción
+        const form = new FormData();
+        form.append("file", file);
+
+        const upload = await fetch(`${HF_BASE}/upload`, {
+            method: "POST",
+            body: form
+        });
+
+        const up = await upload.json();
+        const path = up.files[0];
+
         const r1 = await fetch(`${HF_BASE}/gradio_api/call/predict`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                data: [file.name],
-                fn_index: HF_FN_INDEX
-            })
+            body: JSON.stringify({ data: [path] })
         });
 
         const j1 = await r1.json();
-        if (!j1.event_id) throw "Sin event_id";
-
-        // 2️⃣ obtener resultado
-        const r2 = await fetch(
-            `${HF_BASE}/gradio_api/call/predict/${j1.event_id}`
-        );
-
+        const r2 = await fetch(`${HF_BASE}/gradio_api/call/predict/${j1.event_id}`);
         const j2 = await r2.json();
-        const key = j2?.data?.[0] || "--";
 
-        mostrarTonalidad(key);
+        mostrarTonalidad(j2?.data?.[0] || "--");
 
     } catch (e) {
-        console.warn("HF error:", e);
+        console.error("HF ERROR", e);
         mostrarTonalidad("--");
     }
 }
@@ -291,7 +294,6 @@ function mostrarTonalidad(key) {
     const box = document.getElementById("tonality-display");
     const txt = document.getElementById("key-result");
     if (!box || !txt) return;
-
     txt.innerText = key;
     box.classList.remove("hidden");
 }
