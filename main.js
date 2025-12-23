@@ -272,9 +272,13 @@ async function analizarTonalidadHF(file) {
 }
 
 function mostrarTonalidad(data) {
-    let el = document.getElementById("key");
-    if (!el) return;
+    const container = document.getElementById("tonality-display");
+    const el = document.getElementById("key-result");
+    if (!container || !el) return;
 
-    const key = data.key || data.label || data.result || "--";
+    const key = data.key || data.label || data.result || data.data?.[0] || "--";
+
     el.innerText = key;
+    container.classList.remove("hidden");
 }
+
