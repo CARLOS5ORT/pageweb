@@ -246,27 +246,41 @@ function cargarLetra() {
 /* =======================
    HUGGINGFACE
 ======================= */
+/* =======================
+   HUGGINGFACE (FIX REAL)
+======================= */
 const HF_BASE = "https://carlos5ort-detector-tonalidad.hf.space";
 
 async function analizarTonalidadHF(file) {
-    const el = document.getElementById("key-panel");
-    el.innerText = "TONALIDAD: Analizando...";
-    el.classList.remove("hidden");
+    const keyEl = document.getElementById("key-result");
+    const panel = document.getElementById("tonality-display");
+
+    keyEl.innerText = "Analizando...";
+    panel.classList.remove("hidden");
 
     try {
-        const form = new FormData();
-        form.append("file", file);
+        const formData = new FormData();
+        formData.append("file", file);
 
-        const res = await fetch(`${HF_BASE}/predict`, {
+        const res = await fetch(`${HF_BASE}/run/predict`, {
             method: "POST",
-            body: form
+            body: formData
         });
 
         const data = await res.json();
-        el.innerText = "TONALIDAD: " + (data.key || "No detectada");
 
-    } catch (e) {
-        console.error(e);
-        el.innerText = "TONALIDAD: No disponible";
+        /*
+          Gradio devuelve:
+          { data: ["C Mayor"] }  o similar
+        */
+        if (data?.data && data.data.length > 0) {
+            keyEl.innerText = data.data[0];
+        } else {
+            keyEl.innerText = "No detectada";
+        }
+
+    } catch (err) {
+        console.error("HF ERROR:", err);
+        keyEl.innerText = "Error";
     }
 }
