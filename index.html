@@ -20,10 +20,15 @@
     <button class="btn-ctrl btn-main" onclick="iniciarTodo()">CARGAR Y ANALIZAR</button>
 </div>
 
+<div id="tonality-display" class="hidden">
+    CLAVE: <span id="key-result">--</span>
+</div>
+
 <div id="footer-controls" class="hidden">
     <div id="progress-container" onclick="clickBarra(event)">
         <div id="progress-bar"></div>
     </div>
+
     <div id="controls-row">
         <button class="btn-ctrl btn-change" onclick="cambiarCancion()">Nueva</button>
         <button class="btn-ctrl" onclick="saltar(-10)">-10s</button>
@@ -41,10 +46,6 @@
 <div id="lyrics-panel" class="hidden">
     <h3>LETRA</h3>
     <div id="lyrics-box"></div>
-</div>
-
-<div id="tonality-display" class="hidden">
-    CLAVE: <span id="key-result">--</span>
 </div>
 
 <script src="main.js"></script>
