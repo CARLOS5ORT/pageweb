@@ -5,6 +5,7 @@ let bars = [];
 let voiceTrail = [];
 let freqUser = 0;
 let ready = false;
+let audioReady = false;
 
 const notes = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 
@@ -15,7 +16,6 @@ function setup() {
     createCanvas(windowWidth, windowHeight);
     textFont("monospace");
 
-    // 🔒 FORZAR ESTADO INICIAL CORRECTO
     document.getElementById("setup-panel")?.classList.remove("hidden");
     document.getElementById("footer-controls")?.classList.add("hidden");
     document.getElementById("hud")?.classList.add("hidden");
@@ -26,9 +26,9 @@ function setup() {
    INICIO PRINCIPAL
 ======================= */
 async function iniciarTodo() {
-    if (ready) return; // ❌ evita doble inicio
+    if (ready) return;
 
-    const file = document.getElementById("audioFile").files[0];
+    const file = document.getElementById("audioFile")?.files[0];
     if (!file) {
         alert("Selecciona un archivo de audio");
         return;
@@ -41,7 +41,6 @@ async function iniciarTodo() {
     cargarLetra();
     await getAudioContext().resume();
 
-    // 🔥 HuggingFace NO bloquea
     analizarTonalidadHF(file);
 
     song = loadSound(URL.createObjectURL(file), () => {
@@ -58,6 +57,7 @@ async function iniciarTodo() {
                 mic.stream,
                 () => {
                     ready = true;
+                    audioReady = true;
                     song.play();
                 }
             );
@@ -66,11 +66,36 @@ async function iniciarTodo() {
 }
 
 /* =======================
+   CONTROLES (🔥 FALTABAN)
+======================= */
+function togglePlay() {
+    if (!song || !audioReady) return;
+
+    if (song.isPlaying()) {
+        song.pause();
+    } else {
+        song.play();
+    }
+}
+
+function stopSong() {
+    if (!song) return;
+    song.stop();
+}
+
+function seek(seconds) {
+    if (!song) return;
+    let t = song.currentTime() + seconds;
+    t = constrain(t, 0, song.duration());
+    song.jump(t);
+}
+
+/* =======================
    DRAW
 ======================= */
 function draw() {
     background(5,5,15);
-    if (!ready) return;
+    if (!ready || !song || !fftSong) return;
 
     drawGrid();
 
@@ -87,8 +112,8 @@ function draw() {
         }
     }
 
-    if (bars.length && bars[0].time < now - 5) bars.shift();
-    if (voiceTrail.length && voiceTrail[0].time < now - 5) voiceTrail.shift();
+    bars = bars.filter(b => b.time > now - 5);
+    voiceTrail = voiceTrail.filter(v => v.time > now - 5);
 
     stroke("#ff00ff");
     strokeWeight(12);
@@ -98,7 +123,9 @@ function draw() {
         line(x, b.y, x + 45, b.y);
     }
 
-    pitchUser.getPitch((_, f) => freqUser = f || 0);
+    if (pitchUser) {
+        pitchUser.getPitch((_, f) => freqUser = f || 0);
+    }
 
     if (freqUser > 0) {
         voiceTrail.push({
@@ -150,12 +177,16 @@ function draw() {
 function detectPitchSong() {
     let w = fftSong.waveform();
     let best = -1, bestCorr = 0;
+
     for (let o=20; o<1000; o++) {
         let c=0;
         for (let i=0; i<w.length-o; i++) c += w[i] * w[i+o];
-        if (c > bestCorr) { bestCorr = c; best = o; }
+        if (c > bestCorr) {
+            bestCorr = c;
+            best = o;
+        }
     }
-    return best > 0 ? getAudioContext().sampleRate/best : null;
+    return best > 0 ? getAudioContext().sampleRate / best : null;
 }
 
 function nearestBarY(time) {
@@ -187,9 +218,11 @@ function drawGrid() {
    UI
 ======================= */
 function updateUI() {
-    if (!song) return;
+    if (!song || !song.isLoaded()) return;
+
     document.getElementById("progress-bar").style.width =
         (song.currentTime()/song.duration()*100) + "%";
+
     document.getElementById("time").innerText =
         Math.floor(song.currentTime()) + " / " + Math.floor(song.duration());
 }
@@ -198,10 +231,12 @@ function updateUI() {
    LETRA
 ======================= */
 function cargarLetra() {
-    const t = document.getElementById("lyricsInput").value.trim();
+    const t = document.getElementById("lyricsInput")?.value.trim();
     if (!t) return;
+
     const box = document.getElementById("lyrics-box");
     box.innerHTML = "";
+
     t.split("\n").forEach(l => {
         if (l.trim()) {
             const s = document.createElement("span");
@@ -209,11 +244,12 @@ function cargarLetra() {
             box.appendChild(s);
         }
     });
-    document.getElementById("lyrics-panel").classList.remove("hidden");
+
+    document.getElementById("lyrics-panel")?.classList.remove("hidden");
 }
 
 /* =======================
-   HUGGINGFACE (SAFE)
+   HUGGINGFACE (SE MANTIENE)
 ======================= */
 const HF_BASE = "https://carlos5ort-detector-tonalidad.hf.space";
 
