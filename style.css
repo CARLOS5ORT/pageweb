@@ -1,38 +1,36 @@
-/* ===============================
-   GLOBAL
-================================ */
 body {
     margin: 0;
-    padding: 0;
     background: #050508;
     color: #00f2ff;
     font-family: 'Segoe UI', sans-serif;
     overflow: hidden;
 }
 
-/* ===============================
-   CANVAS (CLAVE DEL PROBLEMA)
-================================ */
+.hidden { display: none; }
+
+/* 🔥 CLAVE: canvas NO bloquea clicks */
 canvas {
     position: fixed;
     top: 0;
     left: 0;
-    z-index: 1;              /* 👈 DETRÁS DEL UI */
-    pointer-events: none;    /* 👈 NO CAPTURA CLICKS */
+    z-index: 1;
+    pointer-events: none;
 }
 
-/* ===============================
-   UTILIDADES
-================================ */
-.hidden {
-    display: none !important;
+/* CONTROLES SI reciben clicks */
+#setup-panel,
+#footer-controls,
+#lyrics-panel,
+#hud,
+#tonality-display {
+    position: relative;
+    z-index: 10;
+    pointer-events: auto;
 }
 
-/* ===============================
-   PANEL DE SETUP
-================================ */
+/* SETUP */
 #setup-panel {
-    position: fixed;
+    position: absolute;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
@@ -42,64 +40,15 @@ canvas {
     border-radius: 20px;
     width: 340px;
     text-align: center;
-    z-index: 100;           /* 👈 SOBRE EL CANVAS */
 }
 
-#setup-panel textarea {
-    width: 100%;
-    height: 120px;
-    background: #000;
-    color: #00f2ff;
-    border: 1px solid #00f2ff;
-    border-radius: 8px;
-    padding: 6px;
-}
-
-/* ===============================
-   BOTONES
-================================ */
-.btn-ctrl {
-    background: transparent;
-    border: 1px solid #00f2ff;
-    color: #00f2ff;
-    padding: 8px 16px;
-    border-radius: 20px;
-    font-size: 11px;
-    cursor: pointer;
-}
-
-.btn-ctrl:hover {
-    background: #00f2ff;
-    color: #000;
-}
-
-.btn-main {
-    background: #00f2ff;
-    color: #000;
-}
-
-.btn-stop {
-    border-color: #ff4444;
-    color: #ff4444;
-}
-
-.btn-change {
-    border-color: #ffaa00;
-    color: #ffaa00;
-}
-
-/* ===============================
-   CONTROLES INFERIORES
-================================ */
+/* FOOTER */
 #footer-controls {
-    position: fixed;
+    position: absolute;
     bottom: 0;
     width: 100%;
     background: rgba(0,0,0,0.95);
-    border-top: 1px solid #333;
-    padding: 10px 0 25px 0;
-    z-index: 100;           /* 👈 SOBRE EL CANVAS */
-    pointer-events: auto;   /* 👈 RECIBE CLICKS */
+    padding: 10px 0 25px;
 }
 
 #progress-container {
@@ -120,20 +69,33 @@ canvas {
 #controls-row {
     display: flex;
     justify-content: center;
-    align-items: center;
     gap: 10px;
 }
 
-/* ===============================
-   HUD (NOTA ACTUAL)
-================================ */
+.btn-ctrl {
+    background: transparent;
+    border: 1px solid #00f2ff;
+    color: #00f2ff;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.btn-ctrl:hover {
+    background: #00f2ff;
+    color: #000;
+}
+
+.btn-stop { border-color:#ff4444; color:#ff4444; }
+.btn-change { border-color:#ffaa00; color:#ffaa00; }
+.btn-main { background:#00f2ff; color:#000; }
+
+/* HUD */
 #hud {
-    position: fixed;
+    position: absolute;
     top: 20px;
     right: 360px;
-    z-index: 100;
-    text-align: right;
-    pointer-events: none;
 }
 
 #note {
@@ -141,11 +103,9 @@ canvas {
     color: #ff00ff;
 }
 
-/* ===============================
-   PANEL DE LETRA
-================================ */
+/* LETRA */
 #lyrics-panel {
-    position: fixed;
+    position: absolute;
     top: 20px;
     right: 20px;
     width: 320px;
@@ -155,35 +115,4 @@ canvas {
     border-radius: 14px;
     padding: 12px;
     overflow-y: auto;
-    z-index: 100;
-    pointer-events: auto;
-}
-
-#lyrics-panel h3 {
-    text-align: center;
-    margin: 0 0 10px 0;
-}
-
-#lyrics-box span {
-    display: block;
-    padding: 4px 6px;
-    color: #aaa;
-}
-
-/* ===============================
-   TONALIDAD
-================================ */
-#tonality-display {
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    z-index: 100;
-    pointer-events: none;
-}
-
-#tonality-display span {
-    color: #ff00ff;
-    font-size: 1.4rem;
-    font-weight: bold;
-    text-shadow: 0 0 10px #ff00ff;
 }
