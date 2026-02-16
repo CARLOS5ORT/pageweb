@@ -1,1 +1,3 @@
-
+flask
+essentia-tensorflow
+numpy
