@@ -1,3 +1,2 @@
 flask
-essentia-tensorflow
 numpy
